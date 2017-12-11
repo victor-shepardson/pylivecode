@@ -32,26 +32,46 @@ class LiveProgram:
         self.reload()
 
     def reload(self):
-        new_program = gloo.Program(**self.kwargs)
+        # note program creation is lazy
+        # this is good since we're on another thread
+        # but means we can't catch a shader error here
+        self.new_program = gloo.Program(**self.kwargs)
         if self.program:
             for k,_ in it.chain(self.program.all_uniforms, self.program.all_attributes):
                 try:
-                    new_program[k] = self.program[k]
+                    self.new_program[k] = self.program[k]
                 except IndexError:
                     print(k)
-        self.program = new_program
 
     def cleanup(self): #???
         for ob in self.observers:
             ob.stop()
             ob.join()
 
+    def _activate(self):
+        try:
+            self.new_program.activate()
+            print('shader reloaded')
+            self.program = self.new_program
+        except AttributeError: # program is None
+            pass
+        except RuntimeError as e: # shader compilation error
+            print(e)
+        finally:
+            self.new_program = None
+
     def __getattr__(self, attr):
+        self._activate()
         return getattr(self.program, attr)
+
     def __getitem__(self, k):
-        return self.program[k]
+        return self.new_program[k] if self.new_program else self.program[k]
+        
     def __setitem__(self, k, v):
-        self.program[k] = v
+        if self.new_program:
+            self.new_program[k] = v
+        else:
+            self.program[k] = v
 
 class Layer(object):
     def __init__(self, size, shader, n=0):

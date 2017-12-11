@@ -34,7 +34,7 @@ void main() {
 
   vec4 c_in = blur5pt(history_1, px);
   // px += c_in.rg;
-  // vec4 c_blur = blur4pt(px);
+  // vec4 c_blur = blur4pt(history_0, px);
 
   vec4 c_acc = cos(2.*pi*c_in);
   for(int i=0; i<4; i++){
@@ -43,13 +43,18 @@ void main() {
     c_acc += blur5pt(history_0, px);
     c_acc = 2.*c_acc.gbar;
   }
-  c_acc = sin(c_acc/16.);
+  c_acc = sin(c_acc/(abs(c_acc.a)+1.));
   vec4 c_sv = 0.1*sin(2.*pi*(c_acc.abgr+p.xxxy*vec4(1.,2.,3.,1.)));
 
   vec4 c0 = mix(c_in, blur5pt(history_0, px), 0.5);
-  vec4 c1 = fract(c_sv + c0 + c_acc).argb;
+  vec4 c1 = (c_sv + c0 + c_acc).argb;
+  for(int i=0;i<4;i++){
+    if (c1[i] > 1. || c1[i] < 0.)
+      c1[i] = 1.-c0.argb[i];
+  }
   // vec4 c = mix(c1, c0, pow(2., -c1.a));
-    vec4 c = mix(c1, c0, 0.9);
-
+  vec4 c = mix(c1, c0, 0.9);
+  // c = fract(1.1*c-0.05);
+  // c = mix(c1, c, 0.9);
   gl_FragColor = c;
 }
