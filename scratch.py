@@ -5,7 +5,7 @@ from pylivecode import Layer
 size = 1366, 720
 
 screen = Layer(size, 'display.glsl')
-feedback = Layer(size, 'feedback2.glsl', n=3)
+feedback = Layer(size, 'feedback2.glsl', n=2)
 filtered = Layer(size, 'filter.glsl', n=2)
 
 window = app.Window(*size)
