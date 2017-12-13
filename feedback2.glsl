@@ -1,5 +1,6 @@
 uniform vec2 size;
-uniform sampler2D history_0, filtered;
+uniform sampler2D history_0;
+uniform sampler2D filtered;
 
 const float pi = 3.14159265359;
 
@@ -32,24 +33,29 @@ void main() {
   vec2 px = gl_FragCoord.xy;
   vec2 p = px/size;
 
-  vec4 c_in = blur5pt(history_0, px);
+  vec2 drift = vec2(0.,-1.);
 
-  vec4 c_acc = sin(2.*pi*c_in);
+  vec4 c_in = samp(history_0, px);
+
+  vec4 w = sin(2.*pi*samp(filtered, px));
+  vec4 c_acc = c_in;
   vec2 delta = vec2(0.);
   for(int i=0; i<4; i++){
-    delta += sin(0.5*pi*(c_acc.rg-c_acc.ba));
+    delta += sin(0.5*pi*(w.rg-w.ba));
     px += delta;
-    c_acc += blur5pt(filtered, px);
+    w += samp(filtered, px);
+    w = 1.*w.gbar;
+    c_acc += samp(history_0, px);
     c_acc = 1.*c_acc.gbar;
   }
-  c_acc = sin(pi*c_acc/(abs(c_acc.a)+1.));
+  // c_acc = sin(pi*c_acc/(abs(c_acc.a)+1.));
+  c_acc = c_acc/(abs(c_acc.a)+1.);
 
-  vec4 w = samp(filtered, px);
-  vec4 c_sv = 0.1*sin(2.*pi*(w.abgr+p.xxxy*vec4(1.,2.,3.,1.)));
+  vec4 c_sv = 0.1*sin(2.*pi*(c_acc.abgr+p.xxxy*vec4(1.,2.,3.,1.)));
 
-  // vec4 c0 = blur6pt(px);
-  vec4 c0 = mix(c_in, blur5pt(history_0, px), 0.8);
-  vec4 c1 = fract(c_sv + .1*(c0 - w) + c_acc).argb;
+  // vec4 c0 = blur5pt(history_0, px);
+  vec4 c0 = mix(c_in, blur5pt(history_0, px+drift), 1.);
+  vec4 c1 = fract(c_sv + .1*(c0 - c_acc) + w).argb;
   // float a = .01;
   // c1 = fract((1.+2.*a)*c1 - a);
   // vec4 c = mix(c1, c0, pow(2., -c1.a));

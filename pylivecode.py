@@ -1,85 +1,64 @@
 import os
 import itertools as it
 import numpy as np
-from glumpy import gloo, gl
+from vispy import gloo
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-
-#idea: __call__ returns an object which allows nested calls to reuse the same buffers somehow?
-#idea: torch layers?
-#idea: multitarget?
-#TODO: eval main loop
 
 def is_path(sh):
     return isinstance(sh, str) and '{' not in sh
 
-class LiveProgram:
-    def __init__(self, **kwargs):
-        self.kwargs = kwargs
-        self.needs_reload = [os.path.abspath(sh) for sh in kwargs.values() if is_path(sh)]
+class LiveProgram(gloo.Program):
+    def __init__(self, vert=None, frag=None, **kw):
+        self.frag = self.vert = self.frag_path = self.vert_path = None
+        if is_path(frag):
+            self.frag_path = os.path.abspath(frag)
+        else:
+            self.frag = frag
+        if is_path(vert):
+            self.vert_path = os.path.abspath(vert)
+        else:
+            self.vert = vert
+
+        super().__init__(**kw)
+
+        self.needs_reload = True
         class Handler(FileSystemEventHandler):
             def on_modified(handler, e):
-                if e.event_type=='modified' and e.src_path in self.needs_reload:
-                    self.reload()
+                if e.event_type=='modified' and e.src_path in (self.frag_path, self.vert_path):
+                    self.needs_reload = True
         self.observers = []
-        dirs = set(os.path.dirname(p) for p in self.needs_reload)
+        dirs = set(
+            os.path.dirname(p) for p in (self.vert_path, self.frag_path) if p)
         for d in dirs:
             obs = Observer()
             obs.schedule(Handler(), d)
             obs.start()
             self.observers.append(obs)
-        self.program = None
-        self.reload()
 
     def reload(self):
-        # note program creation is lazy
-        # this is good since we're on another thread
-        # but means we can't catch a shader error here
-        self.new_program = gloo.Program(**self.kwargs)
-        if self.program:
-            for k,_ in it.chain(self.program.all_uniforms, self.program.all_attributes):
-                try:
-                    self.new_program[k] = self.program[k]
-                except IndexError:
-                    print(k)
+        frag = self.frag or open(self.frag_path).read()
+        vert = self.vert or open(self.vert_path).read()
+        self.set_shaders(vert, frag)
+        self.needs_reload = False
+
+    def draw(self, *args, **kwargs):
+        if self.needs_reload:
+            self.reload()
+        super().draw(*args, **kwargs)
 
     def cleanup(self): #???
         for ob in self.observers:
             ob.stop()
             ob.join()
 
-    def _activate(self):
-        try:
-            self.new_program.activate()
-            print('shader reloaded')
-            self.program = self.new_program
-        except AttributeError: # program is None
-            pass
-        except RuntimeError as e: # shader compilation error
-            print(e)
-        finally:
-            self.new_program = None
-
-    def __getattr__(self, attr):
-        self._activate()
-        return getattr(self.program, attr)
-
-    def __getitem__(self, k):
-        return self.new_program[k] if self.new_program else self.program[k]
-        
-    def __setitem__(self, k, v):
-        if self.new_program:
-            self.new_program[k] = v
-        else:
-            self.program[k] = v
-
 class Layer(object):
     def __init__(self, size, shader, n=0):
-        self.program = LiveProgram(vertex="""
+        self.program = LiveProgram(vert="""
             attribute vec2 position;
             void main(){
               gl_Position = vec4(position, 0.0, 1.0);
-            }""", fragment=shader, count=4)
+            }""", frag=shader, count=4)
         self.program['size'] = size
         self.program['position'] = [
             (-1, -1),
@@ -87,7 +66,7 @@ class Layer(object):
             (+1, -1),
             (+1, +1)
         ]
-        self.draw_method = gl.GL_TRIANGLE_STRIP
+        self.draw_method = gloo.gl.GL_TRIANGLE_STRIP
         self.target = NBuffer(size, n)
 
     def __call__(self, **kwargs):
@@ -113,11 +92,9 @@ class Layer(object):
 
 class NBuffer(object):
     def __init__(self, size, n):
-        self._state = [gloo.FrameBuffer(color=[
-            np.zeros(
-                (*size[::-1], 4), np.float32
-            ).view(gloo.TextureFloat2D)
-            ]) for _ in range(n)]
+        self._state = [gloo.FrameBuffer(color=gloo.Texture2D(
+            np.zeros((*size[::-1], 4), np.float32)
+            )) for _ in range(n)]
         self.head = 0
         self.n = n
 
@@ -127,12 +104,12 @@ class NBuffer(object):
 
     @property
     def state(self):
-        return self._state[self.head].color[0] if self.n else None
+        return self._state[self.head].color_buffer if self.n else None
 
     @property
     def history(self):
         return [
-            self._state[i].color[0]
+            self._state[i].color_buffer
             for i in (self.head-1-np.arange(self.n-1))%self.n]
 
     def activate(self):
