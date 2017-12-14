@@ -11,7 +11,8 @@ filtered = Layer(size, 'filter.glsl', n=2)
 
 def draw():
     filtered(state=feedback.state)
-    screen(state=feedback(filtered=filtered.state))
+    feedback(filtered=filtered.state)
+    screen(state=feedback.state)
 
 class Window(app.Canvas):
     def __init__(self, *args, **kwargs):
@@ -21,8 +22,13 @@ class Window(app.Canvas):
     def on_draw(self, event):
         screen.resize(window.size)
         draw()
-window = Window('pylivecode', size)
-try:
-    app.run()
-except KeyboardInterrupt:
-    pass
+
+if __name__ == '__main__':
+    # app.use_app('pyqt5')
+    app.set_interactive()
+
+window = Window('pylivecode', size, keys='interactive')
+# try:
+#     app.run()
+# except KeyboardInterrupt:
+#     pass

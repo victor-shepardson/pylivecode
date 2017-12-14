@@ -36,16 +36,26 @@ class LiveProgram(gloo.Program):
             obs.start()
             self.observers.append(obs)
 
+    # want to do nothing if shader's don't compile.
+    # need to explicitly flush the glir queue it looks like.
     def reload(self):
+        self.prev_shaders = self._shaders
         frag = self.frag or open(self.frag_path).read()
         vert = self.vert or open(self.vert_path).read()
         self.set_shaders(vert, frag)
         self.needs_reload = False
 
+    def rollback(self):
+        self.set_shaders(*self.prev_shaders)
+
     def draw(self, *args, **kwargs):
-        if self.needs_reload:
-            self.reload()
-        super().draw(*args, **kwargs)
+        try:
+            if self.needs_reload:
+                self.reload()
+            super().draw(*args, **kwargs)
+        except RuntimeError as e:
+            print(e)
+            self.rollback()
 
     def cleanup(self): #???
         for ob in self.observers:
