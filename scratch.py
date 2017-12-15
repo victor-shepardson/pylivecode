@@ -1,5 +1,5 @@
 from vispy import app
-from pylivecode import Layer
+from livecode import Layer
 import IPython
 
 # size = 620, 660
