@@ -6,7 +6,7 @@ import IPython
 size = 1366, 720
 
 screen = Layer(size, 'display.glsl')
-feedback = Layer(size, 'feedback2.glsl', n=2)
+feedback = Layer(size, 'feedback2.glsl', n=3)
 filtered = Layer(size, 'filter.glsl', n=2)
 
 def draw():
