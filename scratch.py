@@ -10,9 +10,9 @@ feedback = Layer(size, 'feedback2.glsl', n=3)
 filtered = Layer(size, 'filter.glsl', n=2)
 
 def draw():
-    filtered(state=feedback.state)
-    feedback(filtered=filtered.state)
-    screen(state=feedback.state)
+    filtered(color=feedback)
+    feedback(filtered=filtered)
+    screen(color=feedback)
 
 class Window(app.Canvas):
     def __init__(self, *args, **kwargs):
