@@ -311,11 +311,14 @@ class VideoWaveTerrain(object):
         return interp2d(self.terrain, (x,y))
 
     def step(self, n):
-        for _ in range(n):
-            self._step()
+        r = np.empty((n,2), dtype=np.float32)
+        for i in range(n):
+            r[i] = self._step()
+        return r
 
     def _step(self):
         val = self.get(self.p[0], self.p[1], self.t)
-        self.p += val[:2]
+        self.p += val[:2]-0.5
         self.p %= self.shape
         self.t += 0.
+        return val[2:4]

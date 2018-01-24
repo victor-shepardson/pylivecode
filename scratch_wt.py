@@ -1,10 +1,11 @@
 import numpy as np
 from vispy import app
 import pyaudio as pa
-from livecode import Layer
+from livecode import Layer, VideoWaveTerrain
 import IPython
 
-size = 620, 660
+size = 200, 200
+# size = 620, 660
 # size = 1366, 720
 
 size = np.array(size)
@@ -14,12 +15,14 @@ feedback = Layer(size, 'feedback2.glsl', n=3)
 filtered = Layer(size, 'filter.glsl', n=2)
 readback = Layer(size//4, 'readback.glsl', n=1, autoread=True)
 
+vwt = VideoWaveTerrain()
+
 def draw():
     filtered(color=feedback)
     feedback(filtered=filtered)
 
     readback(color=feedback)
-    # print(readback.cpu[0,0,0])
+    vwt.feed(readback.cpu)
 
     screen(color=feedback)
 
@@ -43,10 +46,11 @@ window.measure_fps(callback=lambda x: None)
 audio = pa.PyAudio()
 def sound(in_data, frame_count, time_info, status):
     try:
-        rb = readback.cpu.reshape(-1, 4)
-        data = (
-            rb[:frame_count, :2]
-            )*2-1
+        # rb = readback.cpu.reshape(-1, 4)
+        # data = (
+        #     rb[:frame_count, :2]
+        #     )*2-1
+        data = vwt.step(frame_count)*2-1
     except Exception:
         data = np.zeros((frame_count,2))
         # data = np.stack([
