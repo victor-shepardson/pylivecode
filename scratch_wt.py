@@ -32,7 +32,7 @@ class Window(app.Canvas):
         self._timer = app.Timer('auto', connect=self.update, start=True)
         self.show()
     def on_draw(self, event):
-        screen.resize(window.size)
+        screen.resize(np.array(self.size)*self.pixel_scale)
         draw()
         self.title=str(self.fps).encode('ascii')
 

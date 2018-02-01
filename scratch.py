@@ -11,16 +11,11 @@ size = np.array(size)
 screen = Layer(size, 'display.glsl')
 feedback = Layer(size, 'feedback2.glsl', n=3)
 filtered = Layer(size, 'filter.glsl', n=2)
-readback = Layer(size//4, 'readback.glsl', n=1)
 
 def draw():
     filtered(color=feedback)
     feedback(filtered=filtered)
-
-    readback(color=feedback)
-    # print(readback.cpu.shape)
-
-    screen(color=readback)
+    screen(color=feedback)
 
 class Window(app.Canvas):
     def __init__(self, *args, **kwargs):
@@ -28,12 +23,11 @@ class Window(app.Canvas):
         self._timer = app.Timer('auto', connect=self.update, start=True)
         self.show()
     def on_draw(self, event):
-        screen.resize(window.size)
+        screen.resize(np.array(self.size)*self.pixel_scale)
         draw()
         self.title=str(self.fps).encode('ascii')
 
 if __name__ == '__main__':
-    # app.use_app('pyqt5')
     app.set_interactive()
 
 window = Window('pylivecode', size, keys='interactive')

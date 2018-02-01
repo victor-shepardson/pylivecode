@@ -1,4 +1,5 @@
 import os
+from warnings import warn
 from collections import defaultdict
 import itertools as it
 import numpy as np
@@ -10,6 +11,7 @@ try:
     import numba
     from numba import jit, jitclass
 except ImportError:
+    warn('numba not found')
     # dummy numba decorators
     dummy_decorator = lambda *a, **kw: lambda f: f
     jit = jitclass = dummy_decorator
