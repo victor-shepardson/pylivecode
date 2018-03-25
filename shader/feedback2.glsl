@@ -83,7 +83,7 @@ void main() {
   vec4 w = w0;
   vec4 c_acc = vec4(0.);
   vec2 delta = vec2(0.);
-  const int n = 8;
+  const int n = 4;
   float nf = 0.;
   for(int i=0; i<n; i++){
     nf+=1.;

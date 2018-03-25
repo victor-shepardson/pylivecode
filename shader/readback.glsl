@@ -7,7 +7,5 @@ void main() {
   vec2 px = gl_FragCoord.xy;
   vec2 p = px/size;
 
-  vec4 c = texture2D(color, p);
-
-  gl_FragColor = c;
+  gl_FragColor = texture2D(color, p);
 }

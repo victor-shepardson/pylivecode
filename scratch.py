@@ -8,9 +8,9 @@ size = 620, 660
 
 size = np.array(size)
 
-screen = Layer(size, 'display.glsl')
-feedback = Layer(size, 'feedback2.glsl', n=3)
-filtered = Layer(size, 'filter.glsl', n=2)
+screen = Layer(size, 'shader/display.glsl')
+feedback = Layer(size, 'shader/feedback2.glsl', n=3)
+filtered = Layer(size, 'shader/filter.glsl', n=2)
 
 def draw():
     filtered(color=feedback)
@@ -32,6 +32,7 @@ if __name__ == '__main__':
 
 window = Window('pylivecode', size, keys='interactive')
 window.measure_fps(callback=lambda x: None)
+app.run()
 # try:
 #     app.run()
 # except KeyboardInterrupt:

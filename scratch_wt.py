@@ -4,16 +4,18 @@ import pyaudio as pa
 from livecode import Layer, VideoWaveTerrain
 import IPython
 
-size = 200, 200
+# size = 200, 200
 # size = 620, 660
-# size = 1366, 720
+size = 900, 900
 
 size = np.array(size)
 
-screen = Layer(size, 'display.glsl')
-feedback = Layer(size, 'feedback2.glsl', n=3)
-filtered = Layer(size, 'filter.glsl', n=2)
-readback = Layer(size//4, 'readback.glsl', n=1, autoread=True)
+oversample = 2
+
+screen = Layer(size, 'shader/display.glsl')
+feedback = Layer(size*oversample, 'shader/feedback2.glsl', n=3)
+filtered = Layer(size*oversample, 'shader/filter.glsl', n=2)
+readback = Layer(size*oversample//4, 'shader/readback.glsl', n=1, autoread=True)
 
 vwt = VideoWaveTerrain()
 
@@ -68,7 +70,8 @@ stream = audio.open(
 )
 stream.start_stream()
 
-# try:
-#     app.run()
-# except KeyboardInterrupt:
-#     pass
+app.run()
+
+stream.stop_stream()
+stream.close()
+audio.terminate()

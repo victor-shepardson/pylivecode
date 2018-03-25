@@ -1,6 +1,7 @@
 import os
+import sys
 from warnings import warn
-from collections import defaultdict
+from collections import defaultdict, Iterable
 import itertools as it
 import numpy as np
 from vispy import gloo
@@ -25,32 +26,50 @@ except ImportError:
 
 #idea: snapshot, push/pop behavior for buffers, programs and layers
 
+def is_nonstr_iterable(arg):
+    return isinstance(arg, Iterable) and not isinstance(arg, str)
+
+def wrap_str_or_noniterable(arg):
+    return arg if is_nonstr_iterable(arg) else (arg,)
+
 def is_shader_path(sh):
     return isinstance(sh, str) and '{' not in sh
+
+class SourceCode(object):
+    """source code as a string or file path"""
+    def __init__(self, arg):
+        if is_shader_path(arg):
+            self.path = os.path.abspath(arg)
+            self.code = None
+        else:
+            self.path = None
+            self.code = arg
+        self.reload()
+
+    def reload(self):
+        if self.path:
+            with open(self.path) as src:
+                self.code = src.read()
+        return self.code
 
 class LiveProgram(gloo.Program):
     """gloo.Program which watches its source files for changes"""
     def __init__(self, vert=None, frag=None, **kw):
-        self.frag = self.vert = self.frag_path = self.vert_path = None
-        if is_shader_path(frag):
-            self.frag_path = os.path.abspath(frag)
-        else:
-            self.frag = frag
-        if is_shader_path(vert):
-            self.vert_path = os.path.abspath(vert)
-        else:
-            self.vert = vert
+        self.frag_sources = frag and [SourceCode(s) for s in wrap_str_or_noniterable(frag)]
+        self.vert_sources = vert and [SourceCode(s) for s in wrap_str_or_noniterable(vert)]
 
         super().__init__(**kw)
 
         self.needs_reload = True
         class Handler(FileSystemEventHandler):
             def on_modified(handler, e):
-                if e.event_type=='modified' and e.src_path in (self.frag_path, self.vert_path):
+                if e.event_type=='modified' and e.src_path in it.chain(self.frag_sources, self.vert_sources):
                     self.needs_reload = True
         self.observers = []
-        dirs = set(
-            os.path.dirname(p) for p in (self.vert_path, self.frag_path) if p)
+        dirs = {
+            os.path.dirname(p.path)
+            for p in it.chain(self.vert_sources, self.frag_sources)
+            if p.path}
         for d in dirs:
             obs = Observer()
             obs.schedule(Handler(), d)
@@ -59,8 +78,8 @@ class LiveProgram(gloo.Program):
 
     def reload(self):
         self.prev_shaders = self._shaders
-        frag = self.frag or open(self.frag_path).read()
-        vert = self.vert or open(self.vert_path).read()
+        frag = '\n'.join(s.code for s in self.frag_sources)
+        vert = '\n'.join(s.code for s in self.vert_sources)
         self.set_shaders(vert, frag)
         self.needs_reload = False
 
@@ -74,7 +93,10 @@ class LiveProgram(gloo.Program):
             super().draw(*args, **kwargs)
         except RuntimeError as e:
             print(e)
-            self.rollback()
+            try:
+                self.rollback()
+            except Exception:
+                sys.exit(0)
 
     def cleanup(self): #???
         for ob in self.observers:
@@ -135,7 +157,8 @@ class Layer(object):
         return self.target.cpu
 
 class NBuffer(object):
-    def __init__(self, size, n, autoread=False):
+    def __init__(self, size, n,
+            autoread=False, short=False, channels=4, wrapping='repeat', interpolation='linear'):
         """Circular collection of FrameBuffer
         size: 2d dimensions in pixels
         n: number of buffers:
@@ -146,13 +169,23 @@ class NBuffer(object):
         autoread:
             if True, replace cpu_state when deactivating.
             if False, replace when cpu property is requested since activating
+        short:
+            use int8 texture
+        channels:
+            number of color channels
+        wrapping:
+            argument to gloo.Texture2D
+        interpolation:
+            argument to gloo.Texture2D
         """
         self.size = size
+        self.dtype = np.uint8 if short else np.float32
+        internalformat = 'rgba'[:channels]+('8' if short else '32f')
         self._state = [gloo.FrameBuffer(color=gloo.Texture2D(
-            np.zeros((*size[::-1], 4), np.float32),
-            wrapping='repeat',
-            interpolation='linear',
-            internalformat='rgba32f'
+            np.zeros((*size[::-1], channels), self.dtype),
+            wrapping=wrapping,
+            interpolation=interpolation,
+            internalformat=internalformat
             )) for _ in range(n)]
         self.head = 0
         self.n = n
@@ -172,7 +205,7 @@ class NBuffer(object):
         # so not clear whether this is robust at all
         return gloo.read_pixels(
             viewport=(0,0,*self.size),
-            out_type=np.float32)
+            out_type=self.dtype)
 
     @property
     def cpu(self):
