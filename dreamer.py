@@ -1,10 +1,13 @@
 import numpy as np
 from vispy import app
-from vispy.io import imsave
+from imageio import imwrite
 from livecode import Layer
 import IPython
 
-size = 1080, 1080
+import functools as ft
+from multiprocessing import Pool, Array
+
+size = 1920, 1080
 frame = 0
 # size = 1366, 720
 
@@ -20,14 +23,30 @@ displacements = Layer(size,  get_shaders('displacements.glsl'), n=2)
 screen = Layer(size, 'shader/display.glsl')
 readback = Layer(size, 'shader/readback.glsl', n=1, autoread=True, short=True, channels=3)
 
+pool = Pool(6)
+maxtasks = 12
+tasks = []
+def imsave_mp(path, arr):
+    global tasks
+    tasks.append(pool.apply_async(
+        imwrite, (path, arr), dict(compress_level=5),
+        error_callback=print))
+    while len(tasks) > maxtasks:
+        tasks = [t for t in tasks if not t.ready()]
+
 def draw():
     global frame
-    colors(displacements=displacements, frame=frame)
+
     displacements(colors=colors, frame=frame)
+    colors(displacements=displacements, frame=frame)
     post(colors=colors, frame=frame)
+
     screen(color=post)
-    readback(color=post)
-    imsave(f'png/dreamer/{frame:06}.png', readback.cpu)
+
+    if frame%2:
+        readback(color=post)
+        imsave_mp(f'png/dreamer/{frame//2:06}.png', readback.cpu)
+
     frame+=1
 
 
@@ -44,7 +63,7 @@ class Window(app.Canvas):
 if __name__ == '__main__':
     app.set_interactive()
 
-window = Window('dreamer', size, keys='interactive')
+window = Window('dreamer', size/2, keys='interactive')
 window.measure_fps(callback=lambda x: None)
 app.run()
 # try:

@@ -1,8 +1,8 @@
-const int strobe_frames = 3;
+const int strobe_frames = 6;
 
 const float lambda_b = 0.5;//8e-1;
-const float zoom = 0.000;
-const vec2 drift = vec2(-.5,0.);
+const float zoom = 0.;//-0.001;
+const vec2 drift = vec2(-0.5,0.);
 
 const float lambda_c = 3e-2;//5e-2;//2e-1;
 const float alpha_c = 0.5;
