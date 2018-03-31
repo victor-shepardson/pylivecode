@@ -1,4 +1,5 @@
 import numpy as np
+import vispy
 from vispy import app
 from imageio import imwrite
 from livecode import Layer
@@ -6,6 +7,8 @@ import IPython
 
 import functools as ft
 from multiprocessing import Pool, Array
+
+save_pngs = False
 
 size = 1920, 1080
 frame = 0
@@ -43,7 +46,7 @@ def draw():
 
     screen(color=post)
 
-    if frame%2:
+    if save_pngs and frame%2:
         readback(color=post)
         imsave_mp(f'png/dreamer/{frame//2:06}.png', readback.cpu)
 
@@ -58,7 +61,9 @@ class Window(app.Canvas):
     def on_draw(self, event):
         screen.resize(np.array(self.size)*self.pixel_scale)
         draw()
-        self.title=str(self.fps).encode('ascii')
+        self.title=str(self.fps)#.encode('ascii') #glfw needs encode, pyqt5 does not
+
+vispy.use('pyqt5')
 
 if __name__ == '__main__':
     app.set_interactive()
@@ -66,6 +71,9 @@ if __name__ == '__main__':
 window = Window('dreamer', size/2, keys='interactive')
 window.measure_fps(callback=lambda x: None)
 app.run()
+
+from vispy.gloo import gl
+print(gl._pyopengl2.GL.glGetString(gl.GL_VERSION))
 # try:
 #     app.run()
 # except KeyboardInterrupt:

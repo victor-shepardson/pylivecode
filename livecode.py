@@ -1,3 +1,5 @@
+#idea: snapshot, push/pop behavior for buffers, programs and layers
+
 import os
 import sys
 from warnings import warn
@@ -24,7 +26,14 @@ except ImportError:
             return dummy()
     numba = dummy()
 
-#idea: snapshot, push/pop behavior for buffers, programs and layers
+gloo.gl.use_gl('gl+')
+# work around a bug; fix awaiting merge as of 3/30/18: https://github.com/vispy/vispy/pull/1306
+try:
+    gloo.gl._pyopengl2._glGetIntegerv = gloo.gl._pyopengl2.GL.glGetIntegerv
+    gloo.gl._pyopengl2._glGetFloatv = gloo.gl._pyopengl2.GL.glGetFloatv
+except Exception as e:
+    warn('substitute for https://github.com/vispy/vispy/pull/1306 raised Exception')
+    warn(e)
 
 def is_nonstr_iterable(arg):
     return isinstance(arg, Iterable) and not isinstance(arg, str)
@@ -104,6 +113,7 @@ class LiveProgram(gloo.Program):
             ob.join()
 
 class Layer(object):
+    """wraps a fragment shader, quad, and multiple framebuffers in a concise syntax"""
     def __init__(self, size, shader, n=0, **buffer_args):
         self.program = LiveProgram(vert="""
             attribute vec2 position;
