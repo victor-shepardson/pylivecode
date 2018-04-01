@@ -4,7 +4,7 @@ from warnings import warn
 from collections import defaultdict, Iterable
 import itertools as it
 import numpy as np
-from vispy import gloo
+from glumpy import gloo, gl
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -38,84 +38,101 @@ def is_shader_path(sh):
 class SourceCode(object):
     """source code as a string or file path"""
     def __init__(self, arg):
+        self.changed = True
+        self.path = self._code = self.observer = None
         if is_shader_path(arg):
             self.path = os.path.abspath(arg)
-            self.code = None
+            class Handler(FileSystemEventHandler):
+                def on_modified(handler, e):
+                    if e.event_type=='modified' and e.src_path == self.path:
+                        self.reload()
+            self.observer = Observer()
+            self.observer.schedule(Handler(), os.path.dirname(self.path))
+            self.observer.start()
         else:
-            self.path = None
-            self.code = arg
+            self._code = arg
         self.reload()
 
     def reload(self):
         if self.path:
             with open(self.path) as src:
-                self.code = src.read()
-        return self.code
+                self._code = src.read()
+        self.changed = True
+        # return self._code
 
-class LiveProgram(gloo.Program):
+    @property
+    def code(self):
+        self.changed = False
+        return self._code
+
+    def __del__(self):
+        if self.observer is not None:
+            self.observer.stop()
+            self.observer.join()
+
+
+class LiveProgram(object):
     """gloo.Program which watches its source files for changes"""
     def __init__(self, vert=None, frag=None, **kw):
         self.frag_sources = frag and [SourceCode(s) for s in wrap_str_or_noniterable(frag)]
         self.vert_sources = vert and [SourceCode(s) for s in wrap_str_or_noniterable(vert)]
-
-        super().__init__(**kw)
-
-        self.needs_reload = True
-        class Handler(FileSystemEventHandler):
-            def on_modified(handler, e):
-                if e.event_type=='modified' and e.src_path in it.chain(self.frag_sources, self.vert_sources):
-                    self.needs_reload = True
-        self.observers = []
-        dirs = {
-            os.path.dirname(p.path)
-            for p in it.chain(self.vert_sources, self.frag_sources)
-            if p.path}
-        for d in dirs:
-            obs = Observer()
-            obs.schedule(Handler(), d)
-            obs.start()
-            self.observers.append(obs)
+        self.program = None
+        self.program_kw = kw
+        self.reload()
 
     def reload(self):
-        self.prev_shaders = self._shaders
-        frag = '\n'.join(s.code for s in self.frag_sources)
-        vert = '\n'.join(s.code for s in self.vert_sources)
-        self.set_shaders(vert, frag)
-        self.needs_reload = False
-
-    def rollback(self):
-        self.set_shaders(*self.prev_shaders)
-
-    def draw(self, *args, **kwargs):
+        prev_program = self.program
         try:
-            if self.needs_reload:
-                self.reload()
-            super().draw(*args, **kwargs)
-        except RuntimeError as e:
-            print(e)
-            try:
-                self.rollback()
-            except Exception:
+            frag = '\n'.join(s.code for s in self.frag_sources)
+            vert = '\n'.join(s.code for s in self.vert_sources)
+            self.program = gloo.Program(vert, frag, **self.program_kw)
+            if prev_program is not None:
+                for k,v in it.chain(prev_program.active_uniforms, prev_program.active_attributes):
+                    self.program[k] = prev_program[k]
+        except Exception as e:
+            warn(e)
+            if prev_program is not None:
+                self.program = prev_program
+            else:
                 sys.exit(0)
 
-    def cleanup(self): #???
-        for ob in self.observers:
-            ob.stop()
-            ob.join()
+    def needs_reload(self):
+        return any(s.changed for s in it.chain(self.frag_sources, self.vert_sources))
+
+    def draw(self, *args, **kwargs):
+        if self.needs_reload():
+            warn('reloading')
+            self.reload()
+        self.program.draw(*args, **kwargs)
+
+    def __getitem__(self, key):
+        return self.program[key]
+    def __setitem__(self, key, value):
+        self.program[key] = value
+    def __getattr__(self, key):
+        if key in ('draw', 'needs_reload', 'reload'):
+            return super().__getattr__(key)
+        return getattr(self.program, key)
+    # def __setattr__(self, *args):
+    #     self.program.__setattr__(*args)
+
 
 class Layer(object):
     def __init__(self, size, shader, n=0, **buffer_args):
         self.program = LiveProgram(vert="""
-            attribute vec2 position;
+            in vec2 position;
             void main(){
               gl_Position = vec4(position, 0.0, 1.0);
-            }""", frag=shader, count=4)
+            }""", frag=shader, count=4, version='330')
         self.program['size'] = size
-        self.program['position'] = [
+        dtype = [('position', np.float32, 2)]
+        quad_arrays = np.zeros(4, dtype).view(gloo.VertexArray)
+        quad_arrays['position'] = [
             (-1, -1), (-1, +1),
             (+1, -1), (+1, +1)
         ]
-        self.draw_method = gloo.gl.GL_TRIANGLE_STRIP
+        self.program.bind(quad_arrays)
+        self.draw_method = gl.GL_TRIANGLE_STRIP
         self.target = NBuffer(size, n, **buffer_args)
 
     def __call__(self, **kwargs):
@@ -133,6 +150,7 @@ class Layer(object):
                     self.program[u] = t
                 except IndexError as e:
                     pass
+            gl.glDisable(gl.GL_BLEND)
             self.program.draw(self.draw_method)
         return self.state
 
@@ -173,20 +191,20 @@ class NBuffer(object):
             use int8 texture
         channels:
             number of color channels
-        wrapping:
-            argument to gloo.Texture2D
-        interpolation:
-            argument to gloo.Texture2D
+        # wrapping:
+        #     argument to gloo.Texture2D
+        # interpolation:
+        #     argument to gloo.Texture2D
         """
         self.size = size
         self.dtype = np.uint8 if short else np.float32
-        internalformat = 'rgba'[:channels]+('8' if short else '32f')
-        self._state = [gloo.FrameBuffer(color=gloo.Texture2D(
-            np.zeros((*size[::-1], channels), self.dtype),
-            wrapping=wrapping,
-            interpolation=interpolation,
-            internalformat=internalformat
-            )) for _ in range(n)]
+        # internalformat = 'rgba'[:channels]+('8' if short else '32f')
+        ttype = gloo.Texture2D if short else gloo.TextureFloat2D
+        self._state = [gloo.FrameBuffer(
+            color=[np.zeros((*size[::-1], channels), self.dtype).view(ttype)],
+            # wrapping=wrapping,
+            # interpolation=interpolation,
+            ) for _ in range(n)]
         self.head = 0
         self.n = n
         self.cpu_state = None
@@ -215,12 +233,12 @@ class NBuffer(object):
 
     @property
     def state(self):
-        return self._state[self.head].color_buffer if self.n else None
+        return self._state[self.head].color[0] if self.n else None
 
     @property
     def history(self):
         idxs = (self.head-1-np.arange(self.n-1))%self.n
-        return [self._state[i].color_buffer for i in idxs]
+        return [self._state[i].color[0] for i in idxs]
 
     def activate(self):
         if self.n:

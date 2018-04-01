@@ -3,6 +3,8 @@ uniform int frame;
 uniform sampler2D history_0;
 uniform sampler2D colors;
 
+out vec4 fragColor;
+
 //Displacements to neighbors
 
 const vec2 translate = vec2(-.5);
@@ -35,20 +37,20 @@ vec2 wrap(vec2 x){
 mat4x2 grad(vec2 uv){
     vec3 d = vec3(1./size, 0.);
     return mat4x2(
-        texture2D(colors, wrap(uv+d.xz))
-        - texture2D(colors, wrap(uv-d.xz)),
-        texture2D(colors, wrap(uv+d.zy))
-        - texture2D(colors, wrap(uv-d.zy))
+        texture(colors, wrap(uv+d.xz))
+        - texture(colors, wrap(uv-d.xz)),
+        texture(colors, wrap(uv+d.zy))
+        - texture(colors, wrap(uv-d.zy))
 	);
 }
 
 vec4 conv(vec2 uv){
     vec3 d = vec3(1./size, 0.);
     return 0.25*(
-        texture2D(history_0, wrap(uv+d.xz))
-        + texture2D(history_0, wrap(uv-d.xz))
-        + texture2D(history_0, wrap(uv+d.zy))
-        + texture2D(history_0, wrap(uv-d.zy))
+        texture(history_0, wrap(uv+d.xz))
+        + texture(history_0, wrap(uv-d.xz))
+        + texture(history_0, wrap(uv+d.zy))
+        + texture(history_0, wrap(uv-d.zy))
 	);
 }
 
@@ -59,16 +61,16 @@ void main()
     vec2 uv = (gl_FragCoord.xy + to_center(gl_FragCoord.xy)*zoom + drift) * d.xy;
     float rad = tex2circ(uv).r;
     if(circle && rad>1.+fuzz){
-        gl_FragColor = bgcol;
+        fragColor = bgcol;
         return;
     }
 
-    vec4 r = texture2D(history_0, wrap(uv));
+    vec4 r = texture(history_0, wrap(uv));
     vec2 r1 = r.xy;
     vec2 r2 = r.zw;
-    vec4 c0 = texture2D(colors, wrap(uv));
-    vec4 c1 = texture2D(colors, wrap(uv+r1*d.xy));
-    vec4 c2 = texture2D(colors, wrap(uv+r2*d.xy));
+    vec4 c0 = texture(colors, wrap(uv));
+    vec4 c1 = texture(colors, wrap(uv+r1*d.xy));
+    vec4 c2 = texture(colors, wrap(uv+r2*d.xy));
     mat4x2 dc1dr1 = grad(uv+r1*d.xy);//mat3x2(dFdx(c1), dFdy(c1));
     mat4x2 dc2dr2 = grad(uv+r2*d.xy);//mat3x2(dFdx(c2), dFdy(c2));
 
@@ -92,27 +94,26 @@ void main()
     dJdr -= lambda_b*(conv(uv)-r);
     //dJdr -= term(r - conv(uv));
 
-
-    gl_FragColor = r - alpha_r*dJdr;
-    //gl_FragColor = (fract(gl_FragColor*d.xyxy+0.5)-0.5)*sizexy;
+    fragColor = r - alpha_r*dJdr;
+    //fragColor = (fract(fragColor*d.xyxy+0.5)-0.5)*sizexy;
 
     if(frame==0){
-        /*gl_FragColor = (
+        /*fragColor = (
             normalize(to_center(gl_FragCoord.xy)).xyxy
             *vec4(2.,2.,-1.,-1.).xxyy
             /max(d.x,d.y)*circle_size/8.
             );*/
-        /*gl_FragColor = (
+        /*fragColor = (
             vec4(normalize(to_center(gl_FragCoord.xy)), vec2(0.,1.))
             /max(d.x,d.y)*circle_size/3.
             );*/
-		//gl_FragColor = min(size.x,size.y)*vec4(0., 1., 1., 0.)*sqrt(2.)/4.;
-        gl_FragColor = (size/3.-1.).xyxy*vec4(1., 1., 1., -1.);
-        //gl_FragColor = (size/8.).xyxy*vec4(1., 0., 0., -1.);
-        //gl_FragColor = vec4(1.,1.,-1.,1.);
+		//fragColor = min(size.x,size.y)*vec4(0., 1., 1., 0.)*sqrt(2.)/4.;
+        fragColor = (size/3.-1.).xyxy*vec4(1., 1., 1., -1.);
+        //fragColor = (size/8.).xyxy*vec4(1., 0., 0., -1.);
+        //fragColor = vec4(1.,1.,-1.,1.);
         //vec2 m = pow(vec2(2.), 4.*sin(pi*2.*(uv.y+vec2(0.5,0.75))));
-    	//gl_FragColor = m.xxyy*sizexy*0.03125*sin(2.*pi*(uv.x+vec2(0.5,0.25))).xyyx*vec4(1.,1.,1.,-1.);
-        //gl_FragColor = sizexy/16.*(2.+sin(pi*2.*(uv.x+vec4(0.,1.,2.,3.)/4.)))*vec4(1., 1., 1., -1.);
-    	//gl_FragColor = 128.*vec4(1., 1., 1., -1.);
+    	//fragColor = m.xxyy*sizexy*0.03125*sin(2.*pi*(uv.x+vec2(0.5,0.25))).xyyx*vec4(1.,1.,1.,-1.);
+        //fragColor = sizexy/16.*(2.+sin(pi*2.*(uv.x+vec4(0.,1.,2.,3.)/4.)))*vec4(1., 1., 1., -1.);
+    	//fragColor = 128.*vec4(1., 1., 1., -1.);
     }
 }

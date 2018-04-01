@@ -1,5 +1,5 @@
 import numpy as np
-from vispy import app
+from glumpy import app
 from imageio import imwrite
 from livecode import Layer
 import IPython
@@ -7,11 +7,16 @@ import IPython
 import functools as ft
 from multiprocessing import Pool, Array
 
-size = 1920, 1080
-frame = 0
-# size = 1366, 720
+#####################
+size = 1920, 1920
+
+save_images = False
+n_saving_procs = 6
+maxtasks = 12
+#####################
 
 size = np.array(size)
+frame = 0
 
 def get_shaders(s):
     return ('shader/dreamer/common.glsl', 'shader/dreamer/'+s)
@@ -21,10 +26,10 @@ colors = Layer(size, get_shaders('colors.glsl'), n=2)
 displacements = Layer(size,  get_shaders('displacements.glsl'), n=2)
 
 screen = Layer(size, 'shader/display.glsl')
-readback = Layer(size, 'shader/readback.glsl', n=1, autoread=True, short=True, channels=3)
+if save_images:
+    readback = Layer(size, 'shader/readback.glsl', n=1, autoread=True, short=True, channels=3)
 
-pool = Pool(6)
-maxtasks = 12
+pool = Pool(n_saving_procs)
 tasks = []
 def imsave_mp(path, arr):
     global tasks
@@ -42,29 +47,40 @@ def draw():
     post(colors=colors, frame=frame)
 
     screen(color=post)
+    # screen(color=colors)
 
-    if frame%2:
+    if save_images and frame%2:
         readback(color=post)
         imsave_mp(f'png/dreamer/{frame//2:06}.png', readback.cpu)
 
     frame+=1
 
+config = app.configuration.Configuration()
+config.major_version = 3
+config.minor_version = 2
+config.profile = "core"
+window = app.Window(int(size[0]), int(size[1]), 'dreamer', config=config)
 
-class Window(app.Canvas):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._timer = app.Timer('auto', connect=self.update, start=True)
-        self.show()
-    def on_draw(self, event):
-        screen.resize(np.array(self.size)*self.pixel_scale)
-        draw()
-        self.title=str(self.fps).encode('ascii')
+@window.event
+def on_draw(dt):
+    screen.resize(np.array(window.get_size()))#*self.pixel_scale)
+    draw()
 
-if __name__ == '__main__':
-    app.set_interactive()
+# class Window(app.Canvas):
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self._timer = app.Timer('auto', connect=self.update, start=True)
+#         self.show()
+#     def on_draw(self, event):
+#         screen.resize(np.array(self.size)*self.pixel_scale)
+#         draw()
+#         self.title=str(self.fps).encode('ascii')
 
-window = Window('dreamer', size/2, keys='interactive')
-window.measure_fps(callback=lambda x: None)
+# if __name__ == '__main__':
+#     app.set_interactive()
+
+# window = Window('dreamer', size/2, keys='interactive')
+# window.measure_fps(callback=lambda x: None)
 app.run()
 # try:
 #     app.run()

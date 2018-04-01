@@ -16,7 +16,7 @@ const float circle_size = 0.95;
 const float fuzz = 1./64.;
 vec4 bgcol = vec4(0.);
 
-const float pi = 3.141592;
+const float pi = 3.14159265359;
 
 vec2 car2pol(vec2 x){
     return vec2(length(x), atan(x.y, x.x));
