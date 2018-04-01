@@ -22,8 +22,9 @@ def get_shaders(s):
     return ('shader/dreamer/common.glsl', 'shader/dreamer/'+s)
 
 post = Layer(size, get_shaders('post.glsl'), n=1)
-colors = Layer(size, get_shaders('colors.glsl'), n=2)
-displacements = Layer(size,  get_shaders('displacements.glsl'), n=2)
+dreamer = Layer(size, get_shaders('dreamer.glsl'), n=2, w=2)
+#colors = Layer(size, get_shaders('colors.glsl'), n=2)
+#displacements = Layer(size,  get_shaders('displacements.glsl'), n=2)
 
 screen = Layer(size, 'shader/display.glsl')
 if save_images:
@@ -42,9 +43,11 @@ def imsave_mp(path, arr):
 def draw():
     global frame
 
-    displacements(colors=colors, frame=frame)
-    colors(displacements=displacements, frame=frame)
-    post(colors=colors, frame=frame)
+    dreamer(frame=frame)
+    post(colors=dreamer.state[0], frame=frame)
+    # displacements(colors=colors, frame=frame)
+    # colors(displacements=displacements, frame=frame)
+    # post(colors=colors, frame=frame)
 
     screen(color=post)
     # screen(color=colors)

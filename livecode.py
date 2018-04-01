@@ -28,6 +28,7 @@ except ImportError:
 #TODO: ipython in separate thread
 #TODO: hidpi + regular display
 #TODO: window fps count
+#TODO: parse shader to set w automatically
 
 def is_nonstr_iterable(arg):
     return isinstance(arg, Iterable) and not isinstance(arg, str)
@@ -142,17 +143,16 @@ class Layer(object):
         """Render to self.target. Keyword args bound to shader."""
         with self.target:
             for k,v in kwargs.items():
-                try:
-                    v = v.state
-                except Exception:
-                    pass
+                if isinstance(v, Layer):
+                    v = v.state[0]
                 self.program[k] = v
-            for i,t in enumerate(self.target.history):
-                u = 'history_{}'.format(i)
-                try:
-                    self.program[u] = t
-                except IndexError as e:
-                    pass
+            for i, state in enumerate(self.target.history):
+                for j, buf in enumerate(state):
+                    u = 'history_t{}_b{}'.format(i,j)
+                    try:
+                        self.program[u] = buf
+                    except IndexError as e:
+                        pass
             gl.glDisable(gl.GL_BLEND)
             self.program.draw(self.draw_method)
         return self.state
@@ -178,15 +178,16 @@ class Layer(object):
         return self.target.cpu
 
 class NBuffer(object):
-    def __init__(self, size, n,
+    def __init__(self, size, n, w=1,
             autoread=False, short=False, channels=4, wrapping='repeat', interpolation='linear'):
         """Circular collection of FrameBuffer
         size: 2d dimensions in pixels
-        n: number of buffers:
+        n: number of framebuffers:
             n=0 is a dummy
             n=1 is just an FBO
             n=2 ping-pongs (one history buffer available)
             n>2 increases available history (to n-1)
+        w: number of colorbuffers per framebuffer (default 1)
         autoread:
             if True, replace cpu_state when deactivating.
             if False, replace when cpu property is requested since activating
@@ -204,10 +205,12 @@ class NBuffer(object):
         # internalformat = 'rgba'[:channels]+('8' if short else '32f')
         ttype = gloo.Texture2D if short else gloo.TextureFloat2D
         self._state = [gloo.FrameBuffer(
-            color=[np.zeros((*size[::-1], channels), self.dtype).view(ttype)],
+            color=[
+                np.zeros((*size[::-1], channels), self.dtype).view(ttype)
+                for i in range(w)],
             # wrapping=wrapping,
             # interpolation=interpolation,
-            ) for _ in range(n)]
+            ) for j in range(n)]
         self.head = 0
         self.n = n
         self.cpu_state = None
@@ -224,6 +227,8 @@ class NBuffer(object):
         # for some reason FrameBuffer.read() doesn't have out_type argument
         # it also appears to just skip the gl.glReadBuffer
         # so not clear whether this is robust at all
+        # TODO: very likely broken after switch to glumpy
+        # decide how to handle multiple color buffers
         return gloo.read_pixels(
             viewport=(0,0,*self.size),
             out_type=self.dtype)
@@ -236,12 +241,12 @@ class NBuffer(object):
 
     @property
     def state(self):
-        return self._state[self.head].color[0] if self.n else None
+        return self._state[self.head].color if self.n else None
 
     @property
     def history(self):
         idxs = (self.head-1-np.arange(self.n-1))%self.n
-        return [self._state[i].color[0] for i in idxs]
+        return [self._state[i].color for i in idxs]
 
     def activate(self):
         if self.n:
