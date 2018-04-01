@@ -85,8 +85,10 @@ void main()
     vec2 dJdr1 = dc1dr1 * dJdc1;
     vec2 dJdr2 = dc2dr2 * dJdc2;
 
-    dJdr1 /= length(dJdr1) + knee;
-    dJdr2 /= length(dJdr2) + knee;
+	if(knee > 0.){
+	    dJdr1 /= length(dJdr1) + knee;
+	    dJdr2 /= length(dJdr2) + knee;
+	}
 
     vec4 dJdr = vec4(dJdr1, dJdr2) ;
 
@@ -108,8 +110,8 @@ void main()
             /max(d.x,d.y)*circle_size/3.
             );*/
 		//fragColor = min(size.x,size.y)*vec4(0., 1., 1., 0.)*sqrt(2.)/4.;
-        fragColor = (size/3.-1.).xyxy*vec4(1., 1., 1., -1.);
-        //fragColor = (size/8.).xyxy*vec4(1., 0., 0., -1.);
+        //fragColor = (size/3.-1.).xyxy*vec4(1., 1., 1., -1.);
+        fragColor = (size/4.).xyxy*vec4(1., 0., 0., -1.);
         //fragColor = vec4(1.,1.,-1.,1.);
         //vec2 m = pow(vec2(2.), 4.*sin(pi*2.*(uv.y+vec2(0.5,0.75))));
     	//fragColor = m.xxyy*sizexy*0.03125*sin(2.*pi*(uv.x+vec2(0.5,0.25))).xyyx*vec4(1.,1.,1.,-1.);

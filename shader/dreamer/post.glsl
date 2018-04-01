@@ -51,9 +51,9 @@ void main()
     //fragColor = vec4(fragColor[frame/6%4]);
     if(strobe_frames > 0){
         int s = frame/strobe_frames;
-        c = vec4(c[int(mod(s,4))], c[int(mod(s+1,4))], c[int(mod(s+2,4))], 0.);
+        c = vec4(c[s%4], c[(s+1)%4], c[(s+2)%4], 0.);
 
-        float sm = float(mod(frame,strobe_frames))/float(strobe_frames);
+        float sm = float(frame%strobe_frames)/float(strobe_frames);
         c.a = mix(c.r,c.g,sm);
     }
 
@@ -62,7 +62,7 @@ void main()
     //fragColor = vec4(c.a);
    	//fragColor = vec4(c1,c2/4.,c3+c2/2.,1.);
 	fragColor = vec4(lchToRgb(hsl_mix2(
-        vec3(0.,0.,180.*uv.y), vec3(100.,90.,500.+40.*uv.y), clamp(c.r,0.,1.)
+        vec3(0.,0.,180.*uv.y), vec3(100.,90.,500.+40.*uv.y), clamp(c.a,0.,1.)
     )),1.);
 
     //fragColor = fragColor*0.5+0.5;

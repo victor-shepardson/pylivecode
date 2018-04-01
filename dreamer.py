@@ -55,34 +55,18 @@ def draw():
 
     frame+=1
 
+app.use('glfw')
 config = app.configuration.Configuration()
 config.major_version = 3
 config.minor_version = 2
 config.profile = "core"
 window = app.Window(int(size[0]), int(size[1]), 'dreamer', config=config)
+# hack: --vsync option unimplemented
+app.__backend__.glfw.glfwSwapInterval(1)
 
 @window.event
 def on_draw(dt):
-    screen.resize(np.array(window.get_size()))#*self.pixel_scale)
+    #screen.resize(np.array(window.get_size()))#*self.pixel_scale)
     draw()
 
-# class Window(app.Canvas):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         self._timer = app.Timer('auto', connect=self.update, start=True)
-#         self.show()
-#     def on_draw(self, event):
-#         screen.resize(np.array(self.size)*self.pixel_scale)
-#         draw()
-#         self.title=str(self.fps).encode('ascii')
-
-# if __name__ == '__main__':
-#     app.set_interactive()
-
-# window = Window('dreamer', size/2, keys='interactive')
-# window.measure_fps(callback=lambda x: None)
 app.run()
-# try:
-#     app.run()
-# except KeyboardInterrupt:
-#     pass

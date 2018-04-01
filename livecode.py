@@ -25,6 +25,9 @@ except ImportError:
     numba = dummy()
 
 #idea: snapshot, push/pop behavior for buffers, programs and layers
+#TODO: ipython in separate thread
+#TODO: hidpi + regular display
+#TODO: window fps count
 
 def is_nonstr_iterable(arg):
     return isinstance(arg, Iterable) and not isinstance(arg, str)
