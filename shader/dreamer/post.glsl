@@ -1,6 +1,6 @@
 uniform vec2 size;
 uniform int frame;
-uniform sampler2D colors;
+uniform sampler2D color;
 
 out vec4 fragColor;
 
@@ -40,7 +40,7 @@ void main()
         return;
     }
 
-    vec4 c = texture(colors, uv);
+    vec4 c = texture(color, uv);
 
     //fragColor = vec4((fragColor.rgb*3.+fragColor.gba)/4.,1.);
     c = log(.7+exp(1.*c));

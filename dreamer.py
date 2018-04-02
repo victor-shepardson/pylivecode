@@ -23,8 +23,6 @@ def get_shaders(s):
 
 post = Layer(size, get_shaders('post.glsl'), n=1)
 dreamer = Layer(size, get_shaders('dreamer.glsl'), n=2, w=2)
-#colors = Layer(size, get_shaders('colors.glsl'), n=2)
-#displacements = Layer(size,  get_shaders('displacements.glsl'), n=2)
 
 screen = Layer(size, 'shader/display.glsl')
 if save_images:
@@ -44,13 +42,9 @@ def draw():
     global frame
 
     dreamer(frame=frame)
-    post(colors=dreamer.state[0], frame=frame)
-    # displacements(colors=colors, frame=frame)
-    # colors(displacements=displacements, frame=frame)
-    # post(colors=colors, frame=frame)
+    post(color=dreamer.state[0], frame=frame)
 
     screen(color=post)
-    # screen(color=colors)
 
     if save_images and frame%2:
         readback(color=post)
