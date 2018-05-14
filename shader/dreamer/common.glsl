@@ -1,16 +1,3 @@
-const int strobe_frames = 8;
-
-const float lambda_b = 0.5;//0.0625;//8e-1;
-const float zoom = 0.;//-0.001;
-const vec2 drift = vec2(0.,0.);
-
-const float lambda_c = 3e-2;//5e-2;//2e-1;
-const float alpha_c = 0.5;
-
-const float lambda_r = 0.;//1e-3;
-const float alpha_r = 1.;
-const float knee = 0.5;
-
 const bool circle = false;
 const float circle_size = 0.95;
 const float fuzz = 1./64.;

@@ -3,6 +3,17 @@ uniform int frame;
 uniform sampler2D history_t0_b0; //colors
 uniform sampler2D history_t0_b1; //displacements
 
+const float lambda_b = 0.8;//0.0625;//8e-1;
+const float zoom = 0.0;//0.001;//
+const vec2 drift = vec2(0.,0.);
+
+const float lambda_c = 3e-2;//5e-2;//2e-1;
+const float alpha_c = 0.5;//0.0625;
+
+const float lambda_r = 0.;//1e-3;
+const float alpha_r = 0.25;
+const float knee = 0.5;
+
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 fragDisp;
 
@@ -82,12 +93,12 @@ void main()
     vec2 dJdr1 = dc1dr1 * dJdc1;
     vec2 dJdr2 = dc2dr2 * dJdc2;
 
-	if(knee > 0.){
-	    dJdr1 /= length(dJdr1) + knee;
-	    dJdr2 /= length(dJdr2) + knee;
-	}
+    if(knee > 0.){
+        dJdr1 /= length(dJdr1) + knee;
+        dJdr2 /= length(dJdr2) + knee;
+    }
 
-    vec4 dJdr = vec4(dJdr1, dJdr2) ;
+    vec4 dJdr = vec4(dJdr1, dJdr2);
     dJdr += lambda_r*dJdr;
     dJdr -= lambda_b*(conv(uv, history_t0_b1)-r);
 
@@ -98,7 +109,16 @@ void main()
     fragDisp= r - alpha_r*dJdr;
 
     if(frame==0){
-        fragColor = cos(pi*rad+vec4(0., 1./4., 1./2., 3./4.));
-        fragDisp = (size/4.).xyxy*vec4(1., 0., 0., -1.);
+        if(circle){
+            fragColor = cos(pi*rad+vec4(0., 1./4., 1./2., 3./4.));
+            // fragDisp = (2.*size/5.).xyxy*vec4(1., 0., 0., -1.);
+            // fragDisp = (size/2. - gl_FragCoord.xy).xyxy*vec2(2./3.,4./3.).xxyy;
+            vec2 dc = (size/2.-gl_FragCoord.xy);
+            // fragDisp = dc.xyxy*vec4(1.,1.,1.,-1.)/(length(dc)+0.1)*min(size.x, size.y)*circle_size/3.;
+            fragDisp = dc.xyxy*vec2(2./3.,4./3.).xxyy/(length(dc)+0.1)*min(size.x, size.y)*circle_size/3.;
+        } else {
+            fragColor = cos(uv.xxyy*vec4(1.,2.,3.,1.)*pi*2.);
+            fragDisp = (2*min(size.x, size.y)/3+1)*vec4(1.,0.,0.,1.);
+        }
     }
 }

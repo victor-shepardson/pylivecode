@@ -8,7 +8,9 @@ import functools as ft
 from multiprocessing import Pool, Array
 
 #####################
-size = 1920, 1920
+size = 1920,1080#2100, 2100#1080, 1080#
+
+steps_per_frame = 4
 
 save_images = False
 n_saving_procs = 6
@@ -41,7 +43,8 @@ def imsave_mp(path, arr):
 def draw():
     global frame
 
-    dreamer(frame=frame)
+    for _ in range(steps_per_frame):
+        dreamer(frame=frame)
     post(color=dreamer.state[0], frame=frame)
 
     screen(color=post)
@@ -57,9 +60,9 @@ config = app.configuration.Configuration()
 config.major_version = 3
 config.minor_version = 2
 config.profile = "core"
-window = app.Window(int(size[0]), int(size[1]), 'dreamer', config=config)
-# hack: --vsync option unimplemented
-app.__backend__.glfw.glfwSwapInterval(1)
+window = app.Window(int(size[0]), int(size[1]), 'dreamer', config=config, vsync=True)
+# hack: --vsync option unimplemented in glumpy release
+# app.__backend__.glfw.glfwSwapInterval(1)
 
 @window.event
 def on_draw(dt):

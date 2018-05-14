@@ -1,6 +1,7 @@
 import os
 import sys
-from warnings import warn
+import datetime as dt
+import logging
 from collections import defaultdict, Iterable
 import itertools as it
 import numpy as np
@@ -12,7 +13,7 @@ try:
     import numba
     from numba import jit, jitclass
 except ImportError:
-    warn('numba not found')
+    logging.warning('numba not found')
     # dummy numba decorators
     dummy_decorator = lambda *a, **kw: lambda f: f
     jit = jitclass = dummy_decorator
@@ -29,44 +30,53 @@ except ImportError:
 #TODO: hidpi + regular display
 #TODO: window fps count
 #TODO: parse shader to set w automatically
+#TODO: fix shader reloading
 
-def is_nonstr_iterable(arg):
-    return isinstance(arg, Iterable) and not isinstance(arg, str)
-
-def wrap_str_or_noniterable(arg):
-    return arg if is_nonstr_iterable(arg) else (arg,)
+def as_iterable(arg):
+    return arg if isinstance(arg, Iterable) and not isinstance(arg, str) else (arg,)
 
 def is_shader_path(sh):
     return isinstance(sh, str) and '{' not in sh
 
+observer = Observer()
+observer.start()
+class SourceHandler(FileSystemEventHandler):
+    """maps paths to sets of SourceCode instances which need reloading"""
+    def __init__(self):
+        super().__init__()
+        self.instances = defaultdict(set)
+    def on_modified(self, e):
+        insts = self.instances.get(e.src_path) or []
+        for i in insts:
+            i.reload()
+    def add_instance(self, instance):
+        self.instances[instance.path].add(instance)
+source_handler = SourceHandler()
+
 class SourceCode(object):
     """source code as a string or file path"""
     def __init__(self, arg):
-        self.changed = True
-        self.path = self._code = self.observer = None
+        self.changed = self.path = self._code = self.observer = None
         if is_shader_path(arg):
             self.path = os.path.abspath(arg)
-            class Handler(FileSystemEventHandler):
-                def on_modified(handler, e):
-                    if e.event_type=='modified' and e.src_path == self.path:
-                        self.reload()
-            self.observer = Observer()
-            self.observer.schedule(Handler(), os.path.dirname(self.path))
-            self.observer.start()
+            # self.observer = Observer()
+            source_handler.add_instance(self)
+            observer.schedule(source_handler, os.path.dirname(self.path))
+            # self.observer.schedule(source_handler, os.path.dirname(self.path))
+            # self.observer.start()
         else:
             self._code = arg
+        print(f'SourceCode with path {self.path}')
         self.reload()
 
     def reload(self):
         if self.path:
             with open(self.path) as src:
                 self._code = src.read()
-        self.changed = True
-        # return self._code
+        self.changed = dt.datetime.now()
 
     @property
     def code(self):
-        self.changed = False
         return self._code
 
     def __del__(self):
@@ -78,43 +88,52 @@ class SourceCode(object):
 class LiveProgram(object):
     """gloo.Program which watches its source files for changes"""
     def __init__(self, vert=None, frag=None, **kw):
-        self.frag_sources = frag and [SourceCode(s) for s in wrap_str_or_noniterable(frag)]
-        self.vert_sources = vert and [SourceCode(s) for s in wrap_str_or_noniterable(vert)]
+        self.frag_sources = frag and [SourceCode(s) for s in as_iterable(frag)]
+        self.vert_sources = vert and [SourceCode(s) for s in as_iterable(vert)]
         self.program = None
         self.program_kw = kw
+        self.reloaded = None
         self.reload()
 
     def reload(self):
-        prev_program = self.program
-        try:
-            frag = '\n'.join(s.code for s in self.frag_sources)
-            vert = '\n'.join(s.code for s in self.vert_sources)
-            self.program = gloo.Program(vert, frag, **self.program_kw)
-            if prev_program is not None:
-                for k,v in it.chain(prev_program.active_uniforms, prev_program.active_attributes):
-                    self.program[k] = prev_program[k]
-        except Exception as e:
-            warn(e)
-            if prev_program is not None:
-                self.program = prev_program
-            else:
-                sys.exit(0)
+        logging.debug(f'reloading shader program last loaded at {self.reloaded}')
+        self.reloaded = dt.datetime.now()
+        # try:
+        frag = '\n'.join(s.code for s in self.frag_sources)
+        vert = '\n'.join(s.code for s in self.vert_sources)
+        new_program = gloo.Program(vert, frag, **self.program_kw)
+        if self.program is not None:
+            for k,v in it.chain(self.program.active_uniforms, self.program.active_attributes):
+                logging.debug(f'transferring {k}')
+                new_program[k] = self.program[k]
+        self.old_program = self.program
+        self.program = new_program
 
+    @property
+    def sources(self):
+        return it.chain(self.frag_sources, self.vert_sources)
+    @property
     def needs_reload(self):
-        return any(s.changed for s in it.chain(self.frag_sources, self.vert_sources))
+        return any(s.changed > self.reloaded for s in self.sources)
 
     def draw(self, *args, **kwargs):
-        if self.needs_reload():
-            warn('reloading')
-            self.reload()
-        self.program.draw(*args, **kwargs)
+        try:
+            if self.needs_reload:
+                self.reload()
+            # shaders not actually compiled until draw call
+            self.program.draw(*args, **kwargs)
+        except Exception as e:
+            logging.error(e)
+            self.program = self.old_program
+            if self.program is None: #if this program never compiled
+                sys.exit(0)
 
     def __getitem__(self, key):
         return self.program[key]
     def __setitem__(self, key, value):
         self.program[key] = value
     def __getattr__(self, key):
-        if key in ('draw', 'needs_reload', 'reload'):
+        if key in ('draw', 'needs_reload', 'reload', 'sources'):
             return super().__getattr__(key)
         return getattr(self.program, key)
     # def __setattr__(self, *args):
@@ -166,7 +185,7 @@ class Layer(object):
         if k in ['program', 'draw_method', 'target']:
             super().__setattr__(k, v)
         else:
-            print('setting uniform {}'.format(k))
+            logging.debug(f'setting uniform {k}')
             self.program[k] = v
 
     @property
