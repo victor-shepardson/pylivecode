@@ -298,90 +298,55 @@ def interp2d(a, p):
     a = lerp(a[0], a[1], x_m)
     return lerp(a[0], a[1], y_m)
 
-# @jit(nopython=True)
-# def _vwt_getitem(frames, coord):
-#     x,y,z = coord
-#     new_z, old_z, z_m = _mcoords(z)
-#     new_val = interp2d(frames[new_z], (x,y))
-#     if z_m==0:
-#         return new_val
-#     return lerp(
-#         new_val,
-#         interp2d(frames[old_z], (x,y)),
-#         z_m)
-#
-# @jit(nopython=True)
-# def _displace(x):
-#     # assert x.ndim==1
-#     return x[:2]
-#
-# @jit(nopython=True)
-# def _step(frames, p, t):
-#     if len(frames)==0:
-#         return p, t
-#     coord = np.empty(3)
-#     coord[:2] = p
-#     coord[2] = t
-#     x = _vwt_getitem(frames, coord)
-#     p += _displace(x)
-#     p %= frames[0].shape[:2]
-#     t += 0.
-#     return p, t
-#
-# @jit(nopython=True)
-# def _stepn(frames, p, t, n):
-#     for _ in range(n):
-#         p, t = _step(frames, p, t)
-#     return p, t
 
-# class VideoWaveTerrain(object):
-#     # add frames
-#     # eviction policy
-#     # interpolating x,y,z access
-#     # map t -> z
-#     # update rule
-#     # draw rule
-#     def __init__(self, max_len=3):
-#         self.frames = ()
-#         self.max_len = max_len
-#         self.p = np.zeros(2, dtype=np.float32)
-#         self.t = 0.
-#
-#     def feed(self, frame):
-#         if frame.ndim!=3:
-#             frame = frame.reshape(*frame.shape[:2],-1)
-#         # self.frames.insert(0, frame)
-#         # if len(self.frames) > self.max_len:
-#             # self.frames.pop()
-#         self.frames = (frame,)+self.frames[:self.max_len-1]
-#
-#     def __getitem__(self, coord):
-#         return _vwt_getitem(self.frames, coord)
-#
-#     def step(self, n):
-#         self.p, self.t = _stepn(self.frames, self.p, self.t, n)
-
+#TODO: how often are frames repeated?
 @jitclass([
-    ('terrain', numba.float32[:,:,:]),
+    ('next_terrain', numba.float32[:,:,:]),
+    ('cur_terrain', numba.float32[:,:,:]),
+    ('last_terrain', numba.float32[:,:,:]),
     ('shape', numba.float32[2]),
     ('p', numba.float32[2]),
-    ('t', numba.float32)
+    ('t', numba.int64),
+    # ('sr', numba.int64),
+    ('t_cur_added', numba.int64),
+    ('t_last_added', numba.int64),
+    ('t_next_added', numba.int64),
+    ('t_switched', numba.int64),
 ])
 class VideoWaveTerrain(object):
     def __init__(self):#, max_len=3):
-        self.terrain = np.zeros((1,1,1), dtype=np.float32)
+        self.next_terrain = np.zeros((1,1,1), dtype=np.float32)
+        self.cur_terrain = np.zeros((1,1,1), dtype=np.float32)
+        self.last_terrain = np.zeros((1,1,1), dtype=np.float32)
         self.shape = np.ones(2, dtype=np.float32)
         self.p = np.zeros(2, dtype=np.float32)
-        self.t = 0.
+        self.t = 0
+        # self.sr = 24000
+        self.t_next_added = -1
+        self.t_cur_added = -2
+        self.t_last_added = -3
+        self.t_switched = 0
 
     def feed(self, frame):
-        self.shape = frame.shape[:2].astype(np.float32)
+        self.shape = np.float32(frame.shape[:2])
         frame = np.concatenate((frame, frame[0:1]),0)
         frame = np.concatenate((frame, frame[:,0:1]),1)
-        self.terrain = frame.astype(np.float32)
+        self.next_terrain = frame.astype(np.float32)
+        self.t_next_added = self.t
+
+    def switch(self):
+        self.last_terrain = self.cur_terrain
+        self.t_last_added = self.t_cur_added
+        self.cur_terrain = self.next_terrain
+        self.t_cur_added = self.t_next_added
+        self.t_switched = self.t
 
     def get(self, x, y, z):
-        return interp2d(self.terrain, (x,y))
+        return lerp(
+            interp2d(self.last_terrain, (x,y)),
+            interp2d(self.cur_terrain, (x,y)),
+            z
+        )
 
     def step(self, n):
         r = np.empty((n,2), dtype=np.float32)
@@ -390,10 +355,17 @@ class VideoWaveTerrain(object):
         return r
 
     def _step(self):
-        val = self.get(self.p[0], self.p[1], self.t)
+        t = self.t - self.t_switched
+        dur = self.t_cur_added - self.t_last_added
+        if t >= dur:
+            self.switch()
+            m = 0
+        else:
+            m = np.minimum(1.,np.float32(t)/np.maximum(1., np.float32(dur)))
+        val = self.get(self.p[0], self.p[1], m)
         delta = val[:2]-0.5 #move on red, green
         delta /= np.linalg.norm(delta) + 1e-15
         self.p += delta
         self.p %= self.shape
-        self.t += 1./30.
+        self.t += 1
         return val[2:4] #return blue, alpha
