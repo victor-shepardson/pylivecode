@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 from glumpy import app
 import pyaudio as pa
@@ -37,6 +39,7 @@ window = app.Window(int(size[0]), int(size[1]), 'vwt', config=config, vsync=True
 def on_draw(dt):
     draw()
 
+
 audio = pa.PyAudio()
 def sound(in_data, frame_count, time_info, status):
     try:
@@ -44,13 +47,15 @@ def sound(in_data, frame_count, time_info, status):
         # data = (
         #     rb[:frame_count, :2]
         #     )*2-1
+        # raise Exception
         data = vwt.step(frame_count)*2-1
-    except Exception:
+    except Exception as e:
+        logging.error(e)
         data = np.zeros((frame_count,2))
         # data = np.stack([
-        #     np.sin(np.linspace(0,50*2.*np.pi,frame_count)),
-        #     np.sin(np.linspace(0,150*2.*np.pi,frame_count))
-        #     ],1)
+        #     np.sin(np.linspace(0,3*2.*np.pi,frame_count,endpoint=False)),
+        #     np.sin(np.linspace(0,4*2.*np.pi,frame_count,endpoint=False))
+        #     ],1).astype(np.float32)/10.
     return (data, pa.paContinue)
 
 stream = audio.open(
@@ -58,15 +63,15 @@ stream = audio.open(
     channels=2,
     rate=24000,
     output=True,
-    stream_callback=sound
+    stream_callback=sound,
+    frames_per_buffer=512
 )
 
-try:
-    stream.start_stream()
-    app.run()
-except KeyboardInterrupt:
-    pass
-finally:
+@window.event
+def on_close():
     stream.stop_stream()
     stream.close()
     audio.terminate()
+
+app.run()
+stream.start_stream()

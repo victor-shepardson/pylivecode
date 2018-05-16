@@ -375,12 +375,12 @@ class VideoWaveTerrain(object):
         self.t = 0.
 
     def feed(self, frame):
-        self.shape = np.float32(frame.shape[:2])
+        self.shape = frame.shape[:2].astype(np.float32)
         frame = np.concatenate((frame, frame[0:1]),0)
         frame = np.concatenate((frame, frame[:,0:1]),1)
-        self.terrain = frame
+        self.terrain = frame.astype(np.float32)
 
-    def get(self, x,y,z):
+    def get(self, x, y, z):
         return interp2d(self.terrain, (x,y))
 
     def step(self, n):
@@ -391,7 +391,9 @@ class VideoWaveTerrain(object):
 
     def _step(self):
         val = self.get(self.p[0], self.p[1], self.t)
-        self.p += val[:2]-0.5 #move on red, green
+        delta = val[:2]-0.5 #move on red, green
+        delta /= np.linalg.norm(delta) + 1e-15
+        self.p += delta
         self.p %= self.shape
-        self.t += 0.
+        self.t += 1./30.
         return val[2:4] #return blue, alpha
