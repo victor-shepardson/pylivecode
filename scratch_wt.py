@@ -1,5 +1,5 @@
 import numpy as np
-from vispy import app
+from glumpy import app
 import pyaudio as pa
 from livecode import Layer, VideoWaveTerrain
 import IPython
@@ -10,12 +10,10 @@ size = 900, 900
 
 size = np.array(size)
 
-oversample = 2
-
 screen = Layer(size, 'shader/display.glsl')
-feedback = Layer(size*oversample, 'shader/feedback2.glsl', n=3)
-filtered = Layer(size*oversample, 'shader/filter.glsl', n=2)
-readback = Layer(size*oversample//4, 'shader/readback.glsl', n=1, autoread=True)
+feedback = Layer(size, 'shader/feedback2.glsl', n=3)
+filtered = Layer(size, 'shader/filter.glsl', n=2)
+readback = Layer(size//4, 'shader/readback.glsl', n=1, autoread=True)
 
 vwt = VideoWaveTerrain()
 
@@ -28,22 +26,16 @@ def draw():
 
     screen(color=feedback)
 
-class Window(app.Canvas):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._timer = app.Timer('auto', connect=self.update, start=True)
-        self.show()
-    def on_draw(self, event):
-        screen.resize(np.array(self.size)*self.pixel_scale)
-        draw()
-        self.title=str(self.fps).encode('ascii')
+app.use('glfw')
+config = app.configuration.Configuration()
+config.major_version = 3
+config.minor_version = 2
+config.profile = "core"
+window = app.Window(int(size[0]), int(size[1]), 'vwt', config=config, vsync=True)
 
-if __name__ == '__main__':
-    # app.use_app('pyqt5')
-    app.set_interactive()
-
-window = Window('pylivecode', size, keys='interactive')
-window.measure_fps(callback=lambda x: None)
+@window.event
+def on_draw(dt):
+    draw()
 
 audio = pa.PyAudio()
 def sound(in_data, frame_count, time_info, status):
@@ -68,10 +60,13 @@ stream = audio.open(
     output=True,
     stream_callback=sound
 )
-stream.start_stream()
 
-app.run()
-
-stream.stop_stream()
-stream.close()
-audio.terminate()
+try:
+    stream.start_stream()
+    app.run()
+except KeyboardInterrupt:
+    pass
+finally:
+    stream.stop_stream()
+    stream.close()
+    audio.terminate()

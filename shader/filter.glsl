@@ -1,9 +1,11 @@
 uniform vec2 size;
 uniform sampler2D color;
-uniform sampler2D history_0;
+uniform sampler2D history_t0_b0;
+
+out vec4 fragColor;
 
 vec4 samp(sampler2D t, vec2 px){
-  return texture2D(t, fract(px/size));
+  return texture(t, fract(px/size));
 }
 
 vec4 blur4pt(sampler2D t, vec2 px){
@@ -32,7 +34,7 @@ void main(){
   vec4 s = samp(color, px);
   vec4 c = mix(
     s,
-    mix(samp(history_0, px), blur4pt(history_0, px), 0.5),
+    mix(samp(history_t0_b0, px), blur4pt(history_t0_b0, px), 0.5),
     0.99);
-  gl_FragColor = c;
+  fragColor = c;
 }

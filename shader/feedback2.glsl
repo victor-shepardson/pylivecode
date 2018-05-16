@@ -1,12 +1,14 @@
 uniform vec2 size;
-uniform sampler2D history_0;
-uniform sampler2D history_1;
+uniform sampler2D history_t0_b0;
+uniform sampler2D history_t1_b0;
 uniform sampler2D filtered;
 
 uniform float drag = 0.95;
 
 const float pi = 3.14159265359;
 float eps = 1e-5;
+
+out vec4 fragColor;
 
 float sum(vec4 x){
   return dot(x,vec4(1.));
@@ -29,7 +31,7 @@ vec4 sigmoid(vec4 x){
 }
 
 vec4 samp(sampler2D t, vec2 px){
-  return texture2D(t, fract(px/size));
+  return texture(t, fract(px/size));
 }
 
 vec4 blur4pt(sampler2D t, vec2 px){
@@ -71,7 +73,7 @@ void main() {
   vec2 px = px0;
   vec2 p = px/size;
 
-  vec4 c0 = samp(history_0, px);
+  vec4 c0 = samp(history_t0_b0, px);
   vec4 w0 = samp(filtered, px);
 
   vec4 d0 = mix(c0, w0, 0.5);
@@ -90,19 +92,19 @@ void main() {
     w = samp(filtered, px);//*(0.5+w.gbra)*2.;// + w.gbar;
     w -= mean(w)*0.5;
     // w /= length(w)+eps;
-    cent = centroid5pt(history_0, px);
+    cent = centroid5pt(history_t0_b0, px);
     // delta = 2.*delta + sin(pi*(w.rg-w.ba));
     delta = -1.*w*cent;//*pow(1.5, float(i));
     // delta /= length(delta)+eps+0.05;
     px += delta;//(0.01+length(delta));
 
     // w = w.gbar;
-    c_acc += samp(history_0, px);
+    c_acc += samp(history_t0_b0, px);
     // c_acc = 1.*c_acc.gbar;
     // if(sin(2*pi*c_acc.a) > 1.-nf*2./float(n)) break;
     // if(w.a > 1.-nf/float(n)) break;
     if(length(c_acc-mean(c_acc)) > sqrt(2.)*nf/float(n)) break;
-    vec4 cl = samp(history_0, px);
+    vec4 cl = samp(history_t0_b0, px);
     // if(1.-cos(length(cl-mean(cl))) > 2.-2.*nf/float(n)) break;
   }
   // c_acc = 0.5+0.5*cos(sqrt(c_acc));
@@ -124,15 +126,15 @@ void main() {
 
   px += drift;
 
-  vec4 c1 = blur5pt(history_0, px);
-  vec4 w1 = samp(history_1, px);
+  vec4 c1 = blur5pt(history_t0_b0, px);
+  vec4 w1 = samp(history_t1_b0, px);
 
   vec4 c2 = c_acc.argb;//c_acc.barg;
   vec4 sat = c2 - (c2.r+c2.g+c2.b)/3.;//(c2.r+c2.g+c2.b+c2.a)/4.;
   sat /= length(sat)+eps;
   vec4 change = c2-w0;
   change /= length(change)+eps;
-  vec4 sharp = samp(history_0, px)-w1;
+  vec4 sharp = samp(history_t0_b0, px)-w1;
   sharp /= length(sharp)+eps;
   c2 += 0.1*(sat*0.2 + change*0.2 + sharp*0.6);
   // c2 += sat*(0.5-w.a)*0.1 + change*0.05;
@@ -151,13 +153,13 @@ void main() {
   vec4 c = mix(c2, c1, drag);
 
   // // vec4 h0 = c0;
-  // // vec4 h1 = samp(history_1, px0);
+  // // vec4 h1 = samp(history_t1_b0, px0);
   // vec4 h0 = c1;
   // // vec4 h0 = mix(c1, c0, drag);
-  // vec4 h1 = samp(history_1, px + (px - px0));
+  // vec4 h1 = samp(history_t1_b0, px + (px - px0));
   // // vec4 h1 = mix(
-  // //   samp(history_1, px0 - (px - px0)),
-  // //   samp(history_1, px0),
+  // //   samp(history_t1_b0, px0 - (px - px0)),
+  // //   samp(history_t1_b0, px0),
   // //   drag);
   // vec4 dh = h0 - h1;
   // vec4 dc = c - h0;
@@ -172,5 +174,5 @@ void main() {
   // dc = dc_pll + dc_perp;
   // c = h0 + dc;
 
-  gl_FragColor = c;
+  fragColor = c;//mix(c, c0, drag);
 }

@@ -234,28 +234,21 @@ class NBuffer(object):
         self.n = n
         self.cpu_state = None
         self.autoread = autoread
+        self.readback_buffer = 0
 
     def resize(self, size):
         self.size = size
         for buf in self._state:
             buf.resize(*size)
 
-    def read(self):
+    def read(self, b):
         assert self.n>0, "nothing to read from NBuffer of length 0"
-        # return self._state[self.head].read()
-        # for some reason FrameBuffer.read() doesn't have out_type argument
-        # it also appears to just skip the gl.glReadBuffer
-        # so not clear whether this is robust at all
-        # TODO: very likely broken after switch to glumpy
-        # decide how to handle multiple color buffers
-        return gloo.read_pixels(
-            viewport=(0,0,*self.size),
-            out_type=self.dtype)
+        return self.state[b].get()
 
     @property
     def cpu(self):
         if self.cpu_state is None:
-            self.cpu_state = self.read()
+            self.cpu_state = self.read(self.readback_buffer)
         return self.cpu_state
 
     @property
@@ -277,7 +270,7 @@ class NBuffer(object):
     def deactivate(self):
         if self.n:
             if self.autoread:
-                self.cpu_state = self.read()
+                self.cpu_state = self.read(self.readback_buffer)
             self._state[self.head].deactivate()
 
     def __enter__(self):
@@ -398,7 +391,7 @@ class VideoWaveTerrain(object):
 
     def _step(self):
         val = self.get(self.p[0], self.p[1], self.t)
-        self.p += val[:2]-0.5
+        self.p += val[:2]-0.5 #move on red, green
         self.p %= self.shape
         self.t += 0.
-        return val[2:4]
+        return val[2:4] #return blue, alpha

@@ -4,7 +4,7 @@ uniform sampler2D history_0;
 const float pi = 3.14159265359;
 
 vec4 samp(vec2 px){
-  return texture2D(history_0, fract(px/size));
+  return texture(history_0, fract(px/size));
 }
 
 vec4 blur4pt(vec2 px){
