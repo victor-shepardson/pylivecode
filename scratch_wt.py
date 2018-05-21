@@ -1,4 +1,4 @@
-import logging
+import sys, logging
 
 import numpy as np
 from glumpy import app
@@ -9,24 +9,16 @@ import IPython
 # size = 200, 200
 # size = 620, 660
 size = 900, 900
-
 size = np.array(size)
+
+frame_count = 512
 
 screen = Layer(size, 'shader/display.glsl')
 feedback = Layer(size, 'shader/feedback2.glsl', n=3)
 filtered = Layer(size, 'shader/filter.glsl', n=2)
 readback = Layer(size//4, 'shader/readback.glsl', n=1, autoread=True)
 
-vwt = VideoWaveTerrain()
-
-def draw():
-    filtered(color=feedback)
-    feedback(filtered=filtered)
-
-    readback(color=feedback)
-    vwt.feed(readback.cpu)
-
-    screen(color=feedback)
+vwt = VideoWaveTerrain(size, frame_count)
 
 app.use('glfw')
 config = app.configuration.Configuration()
@@ -37,25 +29,20 @@ window = app.Window(int(size[0]), int(size[1]), 'vwt', config=config, vsync=True
 
 @window.event
 def on_draw(dt):
-    draw()
+    vwt.draw()
+    filtered(color=feedback)
+    feedback(filtered=filtered)
 
+    readback(color=feedback)
+    vwt.feed(readback.cpu)
+
+    # screen(color=feedback)
+    screen(color=vwt.target.state[0])
 
 audio = pa.PyAudio()
-def sound(in_data, frame_count, time_info, status):
-    try:
-        # rb = readback.cpu.reshape(-1, 4)
-        # data = (
-        #     rb[:frame_count, :2]
-        #     )*2-1
-        # raise Exception
-        data = vwt.step(frame_count)*2-1
-    except Exception as e:
-        logging.error(e)
-        data = np.zeros((frame_count,2))
-        # data = np.stack([
-        #     np.sin(np.linspace(0,3*2.*np.pi,frame_count,endpoint=False)),
-        #     np.sin(np.linspace(0,4*2.*np.pi,frame_count,endpoint=False))
-        #     ],1).astype(np.float32)/10.
+def sound(in_data, fc, time_info, status):
+    assert fc==frame_count, fc
+    data = vwt.sound()
     return (data, pa.paContinue)
 
 stream = audio.open(
@@ -64,7 +51,7 @@ stream = audio.open(
     rate=24000,
     output=True,
     stream_callback=sound,
-    frames_per_buffer=512
+    frames_per_buffer=frame_count
 )
 
 @window.event
@@ -72,6 +59,7 @@ def on_close():
     stream.stop_stream()
     stream.close()
     audio.terminate()
+    sys.exit(0)
 
 app.run()
 stream.start_stream()

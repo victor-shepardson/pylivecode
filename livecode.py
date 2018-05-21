@@ -5,7 +5,8 @@ import logging
 from collections import defaultdict, Iterable
 import itertools as it
 import numpy as np
-from glumpy import gloo, gl
+from glumpy import gloo, gl, library
+from glumpy.graphics.collections import PathCollection
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -313,7 +314,7 @@ def interp2d(a, p):
     ('t_next_added', numba.int64),
     ('t_switched', numba.int64),
 ])
-class VideoWaveTerrain(object):
+class VideoWaveTerrainJIT(object):
     def __init__(self):#, max_len=3):
         self.next_terrain = np.zeros((1,1,1), dtype=np.float32)
         self.cur_terrain = np.zeros((1,1,1), dtype=np.float32)
@@ -349,10 +350,13 @@ class VideoWaveTerrain(object):
         )
 
     def step(self, n):
-        r = np.empty((n,2), dtype=np.float32)
+        ps = np.empty((n,2), dtype=np.float32)
+        cs = np.empty((n,2), dtype=np.float32)
         for i in range(n):
-            r[i] = self._step()
-        return r
+            p, c = self._step()
+            ps[i] = p
+            cs[i] = c
+        return ps, cs
 
     def _step(self):
         t = self.t - self.t_switched
@@ -368,4 +372,100 @@ class VideoWaveTerrain(object):
         self.p += delta
         self.p %= self.shape
         self.t += 1
-        return val[2:4] #return blue, alpha
+        # p = np.zeros(3)
+        # p[:2] = self.p
+        p = self.p/self.shape*2-1
+        c = val[2:4]
+        return p, c #(x,y,0), (b,a)
+
+class Points(object):
+    """adapted from glumpy example:
+    https://github.com/glumpy/glumpy/blob/master/examples/gloo-trail.py
+    """
+    def __init__(self, n):
+        self.segments = []
+        vert = """
+        in vec3  a_position;
+        in vec4  a_color;
+        in float a_size;
+        out vec4  v_color;
+        out float v_size;
+        void main (void)
+        {
+            v_size = a_size;
+            v_color = a_color;
+            if( a_color.a > 0.0)
+            {
+                gl_Position = vec4(a_position, 1.0);
+                gl_PointSize = v_size;
+            }
+            else
+            {
+                gl_Position = vec4(-1,-1,0,1);
+                gl_PointSize = 0.0;
+            }
+        }
+        """
+        frag = """
+        in vec4 v_color;
+        in float v_size;
+        out vec4 fragColor;
+        void main()
+        {
+            if( v_color.a <= 0.0)
+                discard;
+            vec2 r = (gl_PointCoord.xy - vec2(0.5));
+            float d = (length(r)-0.5)*v_size;
+            if( d < -1. )
+                 fragColor = v_color;
+            else if( d > 0 )
+                 discard;
+            else
+                fragColor = v_color*vec4(1.,1.,1.,-d);
+        }
+        """
+        self.program = gloo.Program(vert, frag, version='330')
+        self.data = np.zeros(n, [
+            ('a_position', np.float32, 2),
+            ('a_color', np.float32, 4),
+            ('a_size', np.float32, 1)
+            ]).view(gloo.VertexArray)
+        self.program.bind(self.data)
+
+    def append(self, segment):
+        assert len(segment)==len(self.data)
+        self.segments.append(segment)
+
+    def draw(self):
+        for segment in self.segments:
+            self.data['a_position'][:] = segment
+            self.data['a_color'][:] = 1.
+            self.data['a_size'][:] = 4.
+            gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+            self.program.draw(gl.GL_POINTS)
+
+        self.segments = []
+
+class VideoWaveTerrain(object):
+    def __init__(self, size, frame_count, short=False):
+        self.frame_count = frame_count
+        self.vwt = VideoWaveTerrainJIT()
+        self.points = Points(frame_count)
+        self.target = NBuffer(size, 1, short=short)
+
+    def sound(self):
+        try:
+            ps, cs = self.vwt.step(self.frame_count)
+            cs = cs*2-1
+            self.points.append(ps)
+        except Exception as e:
+            logging.error(e)
+            cs = np.zeros((self.frame_count,2))
+        return cs
+
+    def draw(self):
+        with self.target:
+            self.points.draw()
+
+    def __getattr__(self, k):
+        return getattr(self.vwt, k)
