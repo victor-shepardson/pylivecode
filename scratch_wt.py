@@ -1,9 +1,9 @@
 import sys, logging
-
+import itertools as it
 import numpy as np
 from glumpy import app
 import pyaudio as pa
-from livecode import Layer, VideoWaveTerrain, log
+from livecode import Layer, VideoWaveTerrain, log, cycle
 import IPython
 
 # size = 200, 200
@@ -28,18 +28,29 @@ config.minor_version = 2
 config.profile = "core"
 window = app.Window(int(size[0]), int(size[1]), 'vwt', config=config, vsync=True)
 
+# filtered.color = lambda: feedback
+# feedback.filtered = lambda: filtered
+# feedback.aux = lambda: vwt.filtered
+# feedback.drag = 0.9
+# readback.color = lambda: feedback
+# screen.color = lambda: feedback
+
+filtered.color = feedback
+feedback.filtered = filtered
+feedback.aux = vwt.filtered
+feedback.drag = 0.9
+readback.color = feedback
+screen.color = feedback
+
+# screen.color = cycle((feedback, vwt.filtered), 3)
+
 def image():
     vwt.draw()
-    filtered(color=feedback)
-    feedback(filtered=filtered, aux=vwt.filtered)
-
-    readback(color=feedback)
-
+    filtered()
+    feedback()
+    readback()
     vwt.feed(readback.cpu)
-    # print(np.isnan(readback.cpu).any(), np.isinf(readback.cpu).any())
-
-    screen(color=feedback)
-    # screen(color=vwt.filtered)
+    screen()
 
 audio = pa.PyAudio()
 def sound(in_data, fc, time_info, status):

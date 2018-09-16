@@ -1,10 +1,9 @@
-import os
-import sys
+import sys, os, logging
 import datetime as dt
-import logging
 from collections import defaultdict, Iterable
 import itertools as it
 import numpy as np
+
 from glumpy import gloo, gl, library
 from glumpy.graphics.collections import PathCollection
 from watchdog.observers import Observer
@@ -26,17 +25,26 @@ except ImportError:
             return dummy()
     numba = dummy()
 
-#idea: snapshot, push/pop behavior for buffers, programs and layers
+#idea: snapshot, push/pop behavior for buffers, programs, layers?
 #TODO: ipython in separate thread
 #TODO: hidpi + regular display
-#TODO: parse shader to set w automatically
+#TODO: parse shaders to set w automatically
+#TODO: parse shaders to set default uniform values
+#TODO: capsule shader (points+velocity)
+#TODO: move pyaudio dependency from scripts into package
 
+# sugar for setting log level
 class _log(type):
     def __getattr__(cls, level):
         logging.getLogger().setLevel(getattr(logging, level))
 class log(metaclass=_log):
     pass
 
+# pattern utilites on top of itertools
+def cycle(iterable, period=1):
+    return it.cycle(it.chain.from_iterable(it.repeat(x, period) for x in iterable))
+
+# file watching/reloading tools
 def as_iterable(arg):
     return arg if isinstance(arg, Iterable) and not isinstance(arg, str) else (arg,)
 
@@ -71,7 +79,7 @@ class SourceCode(object):
             # self.observer.start()
         else:
             self._code = arg
-        print(f'SourceCode with path {self.path}')
+        logging.debug(f'SourceCode with path {self.path}')
         self.reload()
 
     def reload(self):
@@ -89,6 +97,7 @@ class SourceCode(object):
             self.observer.stop()
             self.observer.join()
 
+# graphics tools on top of glumpy
 
 class LiveProgram(object):
     """gloo.Program which watches its source files for changes"""
@@ -162,8 +171,9 @@ class Layer(object):
         self.program.bind(quad_arrays)
         self.draw_method = gl.GL_TRIANGLE_STRIP
         self.target = NBuffer(size, n, **buffer_args)
+        self.draw_kwargs = {}
 
-    def __call__(self, **kwargs):
+    def draw(self, **kwargs):
         """Render to self.target. Keyword args bound to shader."""
         with self.target:
             for k,v in kwargs.items():
@@ -181,17 +191,23 @@ class Layer(object):
             self.program.draw(self.draw_method)
         return self.state
 
+    def __call__(self):
+        self.draw(**{k:next(v) for k,v in self.draw_kwargs.items()})
+
     def resize(self, size):
         self.target.resize(size)
         self.program['size'] = size
 
     def __setattr__(self, k, v):
         """sugar: most attributes fall through to shader program"""
-        if k in ['program', 'draw_method', 'target']:
+        if k in ['program', 'draw_method', 'target', 'draw_kwargs']:
             super().__setattr__(k, v)
         else:
-            logging.debug(f'setting uniform {k}')
-            self.program[k] = v
+            # store all uniforms in the Layer object as infinite iterators
+            # (may store e.g. default values parsed from the source in the LiveProgram still)
+            if not isinstance(v, it.cycle):
+                v = it.cycle((v,))
+            self.draw_kwargs[k] = v
 
     @property
     def state(self):
@@ -285,6 +301,81 @@ class NBuffer(object):
         self.deactivate()
     def __len__(self):
         return self.n
+
+class Points(object):
+    """adapted from glumpy example:
+    https://github.com/glumpy/glumpy/blob/master/examples/gloo-trail.py
+    """
+    def __init__(self, size, n):
+        self.segments = []
+        self.target = NBuffer(size, 1)
+        vert = """
+        in vec3  a_position;
+        in vec4  a_color;
+        in float a_size;
+        out vec4  v_color;
+        out float v_size;
+        void main (void)
+        {
+            v_size = a_size;
+            v_color = a_color;
+            if( a_color.a > 0.0)
+            {
+                gl_Position = vec4(a_position, 1.0);
+                gl_PointSize = v_size;
+            }
+            else
+            {
+                gl_Position = vec4(-1,-1,0,1);
+                gl_PointSize = 0.0;
+            }
+        }
+        """
+        frag = """
+        in vec4 v_color;
+        in float v_size;
+        out vec4 fragColor;
+        void main()
+        {
+            if( v_color.a <= 0.0)
+                discard;
+            vec2 r = (gl_PointCoord.xy - vec2(0.5));
+            float d = (length(r)-0.5)*v_size;
+            if( d < -1. )
+                 fragColor = v_color;
+            else if( d > 0 )
+                 discard;
+            else
+                fragColor = v_color*vec4(1.,1.,1.,-d);
+        }
+        """
+        self.program = gloo.Program(vert, frag, version='330')
+        self.data = np.zeros(n, [
+            ('a_position', np.float32, 2),
+            ('a_color', np.float32, 4),
+            ('a_size', np.float32, 1)
+            ]).view(gloo.VertexArray)
+        self.program.bind(self.data)
+
+    def append(self, segment):
+        """segment is a tuple of (positions, colors, sizes)"""
+        assert len(segment[0])==len(self.data)
+        self.segments.append(segment)
+
+    def draw(self):
+        with self.target:
+            for p,c,s in self.segments:
+                self.data['a_position'][:] = p
+                self.data['a_color'][:] = c
+                self.data['a_size'][:] = s
+                # gl.glClearColor(0,0,0,0.001)
+                # gl.glEnable(gl.GL_BLEND)
+                # gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+                gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+                self.program.draw(gl.GL_POINTS)
+        self.segments = []
+
+# fast serial processing using numba
 
 @jit(nopython=True)
 def lerp(a, b, m):
@@ -394,78 +485,6 @@ class VideoWaveTerrainJIT(object):
         self.t += 1
         return self.p, c #(x,y), (b,a)
 
-class Points(object):
-    """adapted from glumpy example:
-    https://github.com/glumpy/glumpy/blob/master/examples/gloo-trail.py
-    """
-    def __init__(self, size, n):
-        self.segments = []
-        self.target = NBuffer(size, 1)
-        vert = """
-        in vec3  a_position;
-        in vec4  a_color;
-        in float a_size;
-        out vec4  v_color;
-        out float v_size;
-        void main (void)
-        {
-            v_size = a_size;
-            v_color = a_color;
-            if( a_color.a > 0.0)
-            {
-                gl_Position = vec4(a_position, 1.0);
-                gl_PointSize = v_size;
-            }
-            else
-            {
-                gl_Position = vec4(-1,-1,0,1);
-                gl_PointSize = 0.0;
-            }
-        }
-        """
-        frag = """
-        in vec4 v_color;
-        in float v_size;
-        out vec4 fragColor;
-        void main()
-        {
-            if( v_color.a <= 0.0)
-                discard;
-            vec2 r = (gl_PointCoord.xy - vec2(0.5));
-            float d = (length(r)-0.5)*v_size;
-            if( d < -1. )
-                 fragColor = v_color;
-            else if( d > 0 )
-                 discard;
-            else
-                fragColor = v_color*vec4(1.,1.,1.,-d);
-        }
-        """
-        self.program = gloo.Program(vert, frag, version='330')
-        self.data = np.zeros(n, [
-            ('a_position', np.float32, 2),
-            ('a_color', np.float32, 4),
-            ('a_size', np.float32, 1)
-            ]).view(gloo.VertexArray)
-        self.program.bind(self.data)
-
-    def append(self, segment):
-        assert len(segment)==len(self.data)
-        self.segments.append(segment)
-
-    def draw(self):
-        with self.target:
-            for segment in self.segments:
-                self.data['a_position'][:] = segment
-                self.data['a_color'][:] = 1.
-                self.data['a_size'][:] = 2.
-                # gl.glClearColor(0,0,0,0.001)
-                # gl.glEnable(gl.GL_BLEND)
-                # gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
-                gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-                self.program.draw(gl.GL_POINTS)
-        self.segments = []
-
 class VideoWaveTerrain(object):
     def __init__(self, size, frame_count, n=1, short=False):
         self.frame_count = frame_count
@@ -476,17 +495,18 @@ class VideoWaveTerrain(object):
     def sound(self):
         try:
             ps, cs = self.vwt.step(self.frame_count)
+            samps = np.ascontiguousarray(cs.mean(1)[:,2:])
             ps = ps.reshape(-1,2)*2-1#np.ascontiguousarray(ps.reshape(-1,2)*2-1)
-            cs = np.ascontiguousarray(cs.mean(1)[:,2:])
-            self.points.append(ps)
+            cs = cs.reshape(-1,4)
+            self.points.append((ps, cs, 3.))
         except Exception as e:
             logging.error(e, exc_info=True)
-            cs = np.zeros((self.frame_count, 2))
-        return cs
+            samps = np.zeros((self.frame_count, 2))
+        return samps
 
     def draw(self):
         self.points.draw()
-        self.filtered(color=self.points.target.state[0])
+        self.filtered.draw(color=self.points.target.state[0])
 
     def __getattr__(self, k):
         return getattr(self.vwt, k)
