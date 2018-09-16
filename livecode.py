@@ -25,13 +25,22 @@ except ImportError:
             return dummy()
     numba = dummy()
 
-#idea: snapshot, push/pop behavior for buffers, programs, layers?
+# critical bugs/performance issues:
 #TODO: ipython in separate thread
-#TODO: hidpi + regular display
-#TODO: parse shaders to set w automatically
-#TODO: parse shaders to set default uniform values
-#TODO: capsule shader (points+velocity)
+#TODO: fix hidpi + regular display
+#TODO: optimize VideoWaveTerrainJIT / debug popping
+# code improvements:
+#TODO: parse shaders to set w automatically (find `out` keywords in header)
+#TODO: parse shaders to set default uniform values (uniform * = ();)
 #TODO: move pyaudio dependency from scripts into package
+#TODO: allow Points to append any number of points at a time (can still draw fixed N at a time)
+#TODO: lazy cycling (don't compute all options each frame)
+#TODO: "needs_draw" flag on Layers / implicit draw order
+#TODO: livecodeable parts of VideoWaveTerrainJIT
+# new features:
+#TODO: snapshot, push/pop behavior for buffers, programs, layers?
+#TODO: capsule shader (points+velocity)
+#TODO: distinguish path color from draw color in VideoWaveTerrain(JIT)
 
 # sugar for setting log level
 class _log(type):
