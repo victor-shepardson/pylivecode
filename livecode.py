@@ -372,12 +372,16 @@ class VideoWaveTerrainJIT(object):
             m = np.minimum(1.,np.float32(t)/np.maximum(1., np.float32(dur)))
         c = np.empty((self.n, 4))
         for i in range(self.n):
-            val = self.get(self.p[i], m)#self.get(self.p[i,0], self.p[i,1], m)
-            delta = val[:2]-0.5 #move on (r, g)
+            val = self.get(self.p[i], m)
+
+            delta = np.sin(np.pi*(val[:2] - val[2:]))
+            # delta = np.sin(val[:2]*2*np.pi)#val[:2]-0.5 #move on (r, g)
             # delta /= np.linalg.norm(delta) + 1e-15
+
             r = i*np.pi*2/np.float32(self.n)
             x,y = np.cos(r), np.sin(r)
             delta = np.array([x*delta[0]-y*delta[1], x*delta[1]+y*delta[0]])
+
             self.momentum[i] = self.momentum[i]*0.9 + delta
             self.p[i] += self.momentum[i] / (np.linalg.norm(self.momentum[i]) + 1e-12) / (shape2(self.cur_terrain)-1)
             c[i] = val
