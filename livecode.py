@@ -299,13 +299,15 @@ def interp2d(a, p):
     a = lerp(a[0], a[1], x_m)
     return lerp(a[0], a[1], y_m)
 
+@jit(nopython=True)
+def shape2(a):
+    return np.float32(a.shape[:2])
 
 #TODO: how often are frames repeated?
 @jitclass([
     ('next_terrain', numba.float32[:,:,:]),
     ('cur_terrain', numba.float32[:,:,:]),
     ('last_terrain', numba.float32[:,:,:]),
-    ('shape', numba.float32[2]),
     ('p', numba.float32[:,:]),
     ('momentum', numba.float32[:,:]),
     ('t', numba.int64),
@@ -321,7 +323,6 @@ class VideoWaveTerrainJIT(object):
         self.next_terrain = np.zeros((2,2,4), dtype=np.float32)
         self.cur_terrain = np.zeros((2,2,4), dtype=np.float32)
         self.last_terrain = np.zeros((2,2,4), dtype=np.float32)
-        self.shape = np.ones(2, dtype=np.float32)
         self.p = np.random.random((n, 2)).astype(np.float32)
         self.momentum = np.zeros((n, 2)).astype(np.float32)
         self.t = 0
@@ -333,7 +334,6 @@ class VideoWaveTerrainJIT(object):
         self.n = n
 
     def feed(self, frame):
-        self.shape = np.float32(frame.shape[:2])
         frame = np.concatenate((frame, frame[0:1]), 0)
         frame = np.concatenate((frame, frame[:,0:1]), 1)
         self.next_terrain = frame.astype(np.float32)
@@ -346,11 +346,11 @@ class VideoWaveTerrainJIT(object):
         self.t_cur_added = self.t_next_added
         self.t_switched = self.t
 
-    def get(self, x, y, z):
+    def get(self, p, m):
         return lerp(
-            interp2d(self.last_terrain, (x,y)),
-            interp2d(self.cur_terrain, (x,y)),
-            z
+            interp2d(self.last_terrain, p*(shape2(self.last_terrain)-1)),
+            interp2d(self.cur_terrain, p*(shape2(self.cur_terrain)-1)),
+            m
         )
 
     def step(self, n_steps):
@@ -360,32 +360,30 @@ class VideoWaveTerrainJIT(object):
             p, c = self._step()
             ps[i] = p
             cs[i] = c
-        return ps/self.shape, cs
+        return ps, cs
 
     def _step(self):
         t = self.t - self.t_switched
         dur = self.t_cur_added - self.t_last_added
         if t >= dur:
             self.switch()
-            m = 0
+            m = 0.0
         else:
             m = np.minimum(1.,np.float32(t)/np.maximum(1., np.float32(dur)))
         c = np.empty((self.n, 4))
         for i in range(self.n):
-            val = self.get(self.p[i,0], self.p[i,1], m)
+            val = self.get(self.p[i], m)#self.get(self.p[i,0], self.p[i,1], m)
             delta = val[:2]-0.5 #move on (r, g)
             # delta /= np.linalg.norm(delta) + 1e-15
-            r = i*np.pi*2/self.n
+            r = i*np.pi*2/np.float32(self.n)
             x,y = np.cos(r), np.sin(r)
             delta = np.array([x*delta[0]-y*delta[1], x*delta[1]+y*delta[0]])
-            self.momentum[i] = self.momentum[i]*0.5 + delta#lerp(delta, self.momentum[i], 0.9)
-            # self.p[i] += self.momentum[i]#delta
-            self.p[i] += self.momentum[i] / np.linalg.norm(self.momentum[i]) + 1e-15
-
+            self.momentum[i] = self.momentum[i]*0.9 + delta
+            self.p[i] += self.momentum[i] / (np.linalg.norm(self.momentum[i]) + 1e-12) / (shape2(self.cur_terrain)-1)
             c[i] = val
-        self.p %= self.shape
+        self.p %= 1.0
         self.t += 1
-        return self.p, c #(x,y,0), (b,a)
+        return self.p, c #(x,y), (b,a)
 
 class Points(object):
     """adapted from glumpy example:
@@ -451,7 +449,7 @@ class Points(object):
             for segment in self.segments:
                 self.data['a_position'][:] = segment
                 self.data['a_color'][:] = 1.
-                self.data['a_size'][:] = 8.
+                self.data['a_size'][:] = 2.
                 # gl.glClearColor(0,0,0,0.001)
                 # gl.glEnable(gl.GL_BLEND)
                 # gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)

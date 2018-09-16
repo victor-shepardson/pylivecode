@@ -34,7 +34,9 @@ def image():
     feedback(filtered=filtered, aux=vwt.filtered)
 
     readback(color=feedback)
+
     vwt.feed(readback.cpu)
+    # print(np.isnan(readback.cpu).any(), np.isinf(readback.cpu).any())
 
     screen(color=feedback)
     # screen(color=vwt.filtered)
@@ -68,4 +70,4 @@ def on_close():
     sys.exit(0)
 
 app.run()
-# stream.start_stream()
+stream.start_stream()
