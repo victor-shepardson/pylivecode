@@ -3,7 +3,7 @@ import sys, logging
 import numpy as np
 from glumpy import app
 import pyaudio as pa
-from livecode import Layer, VideoWaveTerrain
+from livecode import Layer, VideoWaveTerrain, log
 import IPython
 
 # size = 200, 200

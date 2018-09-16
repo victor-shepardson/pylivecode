@@ -30,7 +30,12 @@ except ImportError:
 #TODO: ipython in separate thread
 #TODO: hidpi + regular display
 #TODO: parse shader to set w automatically
-#TODO: fix shader reloading
+
+class _log(type):
+    def __getattr__(cls, level):
+        logging.getLogger().setLevel(getattr(logging, level))
+class log(metaclass=_log):
+    pass
 
 def as_iterable(arg):
     return arg if isinstance(arg, Iterable) and not isinstance(arg, str) else (arg,)
