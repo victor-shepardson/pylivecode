@@ -30,7 +30,7 @@ except ImportError:
 #TODO: fix hidpi + regular display
 #TODO: optimize VideoWaveTerrainJIT / debug popping
 # code improvements:
-#TODO: parse shaders to set w automatically (find `out` keywords in header)
+#TODO: parse shaders to set `w` automatically (find `out` keywords in header)
 #TODO: parse shaders to set default uniform values (uniform * = ();)
 #TODO: move pyaudio dependency from scripts into package
 #TODO: allow Points to append any number of points at a time (can still draw fixed N at a time)
@@ -228,7 +228,8 @@ class Layer(object):
 
 class NBuffer(object):
     def __init__(self, size, n, w=1,
-            autoread=False, short=False, channels=4, wrapping='repeat', interpolation='linear'):
+            autoread=False, short=False, channels=4,
+            wrapping=gl.GL_REPEAT, interpolation=gl.GL_LINEAR):
         """Circular collection of FrameBuffer
         size: 2d dimensions in pixels
         n: number of framebuffers:
@@ -244,22 +245,23 @@ class NBuffer(object):
             use int8 texture
         channels:
             number of color channels
-        # wrapping:
-        #     argument to gloo.Texture2D
-        # interpolation:
-        #     argument to gloo.Texture2D
+        wrapping:
+            gl.GL_CLAMP_TO_EDGE, GL_REPEAT, or GL_MIRRORED_REPEAT
+        interpolation:
+            gl.GL_NEAREST or GL_LINEAR
         """
         self.size = size
         self.dtype = np.uint8 if short else np.float32
-        # internalformat = 'rgba'[:channels]+('8' if short else '32f')
-        ttype = gloo.Texture2D if short else gloo.TextureFloat2D
-        self._state = [gloo.FrameBuffer(
-            color=[
-                np.zeros((*size[::-1], channels), self.dtype).view(ttype)
-                for i in range(w)],
-            # wrapping=wrapping,
-            # interpolation=interpolation,
-            ) for j in range(n)]
+        def gen_tex():
+            ttype = gloo.Texture2D if short else gloo.TextureFloat2D
+            tex = np.zeros((*size[::-1], channels), self.dtype).view(ttype)
+            tex.interpolation = interpolation
+            tex.wrapping = wrapping
+            return tex
+        self._state = [
+            gloo.FrameBuffer(color=[
+                gen_tex() for i in range(w)
+            ]) for j in range(n)]
         self.head = 0
         self.n = n
         self.cpu_state = None

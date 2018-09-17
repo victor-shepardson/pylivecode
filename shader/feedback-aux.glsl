@@ -32,7 +32,8 @@ vec4 sigmoid(vec4 x){
 }
 
 vec4 samp(sampler2D t, vec2 px){
-  return texture(t, fract(px/size));
+  return texture(t, px/size);
+  // return texture(t, fract(px/size));
 }
 
 vec4 blur4pt(sampler2D t, vec2 px){

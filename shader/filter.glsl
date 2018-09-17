@@ -5,7 +5,8 @@ uniform sampler2D history_t0_b0;
 out vec4 fragColor;
 
 vec4 samp(sampler2D t, vec2 px){
-  return texture(t, fract(px/size));
+  return texture(t, px/size);
+  // return texture(t, fract(px/size));
 }
 
 vec4 blur4pt(sampler2D t, vec2 px){
