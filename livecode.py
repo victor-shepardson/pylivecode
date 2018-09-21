@@ -29,6 +29,7 @@ except ImportError:
 #TODO: ipython in separate thread
 #TODO: fix hidpi + regular display
 #TODO: optimize VideoWaveTerrainJIT / debug popping
+#TODO: why are vwt agents wrapping wrong?
 # code improvements:
 #TODO: parse shaders to set `w` automatically (find `out` keywords in header)
 #TODO: parse shaders to set default uniform values (uniform * = ();)
@@ -489,7 +490,7 @@ class VideoWaveTerrainJIT(object):
             x,y = np.cos(r), np.sin(r)
             delta = np.array([x*delta[0]-y*delta[1], x*delta[1]+y*delta[0]])
 
-            self.momentum[i] = self.momentum[i]*0.9 + delta
+            self.momentum[i] = self.momentum[i]*0.5 + delta
             self.p[i] += self.momentum[i] / (np.linalg.norm(self.momentum[i]) + 1e-12) / (shape2(self.cur_terrain)-1)
             c[i] = val
         self.p %= 1.0
@@ -509,7 +510,7 @@ class VideoWaveTerrain(object):
             samps = np.ascontiguousarray(cs.mean(1)[:,2:])
             ps = ps.reshape(-1,2)*2-1#np.ascontiguousarray(ps.reshape(-1,2)*2-1)
             cs = cs.reshape(-1,4)
-            self.points.append((ps, cs, 3.))
+            self.points.append((ps, cs, 8.))
         except Exception as e:
             logging.error(e, exc_info=True)
             samps = np.zeros((self.frame_count, 2))

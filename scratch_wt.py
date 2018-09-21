@@ -6,6 +6,8 @@ import pyaudio as pa
 from livecode import Layer, VideoWaveTerrain, log, cycle
 import IPython
 
+gain = 0
+
 # size = 200, 200
 # size = 620, 660
 # size = 900, 900
@@ -45,8 +47,8 @@ screen.color = feedback
 # screen.color = cycle((feedback, vwt.filtered), 3)
 
 def image():
-    vwt.draw()
     filtered()
+    vwt.draw()
     feedback()
     readback()
     vwt.feed(readback.cpu)
@@ -55,7 +57,7 @@ def image():
 audio = pa.PyAudio()
 def sound(in_data, fc, time_info, status):
     assert fc==frame_count, fc
-    data = vwt.sound()
+    data = gain*vwt.sound()
     return (data, pa.paContinue)
 
 stream = audio.open(
