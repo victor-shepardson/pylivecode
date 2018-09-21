@@ -1,7 +1,7 @@
 import sys, logging
 import itertools as it
 import numpy as np
-from glumpy import app
+from glumpy import app, gl
 import pyaudio as pa
 from livecode import Layer, VideoWaveTerrain, log, cycle
 import IPython
@@ -30,20 +30,12 @@ config.minor_version = 2
 config.profile = "core"
 window = app.Window(int(size[0]), int(size[1]), 'vwt', config=config, vsync=True)
 
-# filtered.color = lambda: feedback
-# feedback.filtered = lambda: filtered
-# feedback.aux = lambda: vwt.filtered
-# feedback.drag = 0.9
-# readback.color = lambda: feedback
-# screen.color = lambda: feedback
-
 filtered.color = feedback
 feedback.filtered = filtered
 feedback.aux = vwt.filtered
 feedback.drag = 0.9
 readback.color = feedback
 screen.color = feedback
-
 # screen.color = cycle((feedback, vwt.filtered), 3)
 
 def image():
@@ -52,6 +44,9 @@ def image():
     feedback()
     readback()
     vwt.feed(readback.cpu)
+    # option one: set viewport in NBuffer.activate, set screen size here, make screen aware of input buffer size somehow
+    # option two: modify Points shaders to be aware of buffer size
+    gl.glViewport(0, 0, *window.get_size())
     screen()
 
 audio = pa.PyAudio()
@@ -71,7 +66,6 @@ stream = audio.open(
 
 @window.event
 def on_draw(dt):
-    # screen.resize(window.get_size())
     window.set_title('fps: {}'.format(window.fps).encode('ascii'))
     image()
 
@@ -81,6 +75,11 @@ def on_close():
     stream.close()
     audio.terminate()
     sys.exit(0)
+
+# @window.event
+# def on_resize(w,h):
+#     # screen.resize((w,h))
+#     pass
 
 app.run()
 stream.start_stream()

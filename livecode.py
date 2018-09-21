@@ -29,11 +29,12 @@ except ImportError:
 #TODO: ipython in separate thread
 #TODO: fix hidpi + regular display
 #TODO: optimize VideoWaveTerrainJIT / debug popping
-#TODO: why are vwt agents wrapping wrong?
 # code improvements:
+#TODO: figure out glViewport call for Points.draw and window.on_resize
 #TODO: parse shaders to set `w` automatically (find `out` keywords in header)
 #TODO: parse shaders to set default uniform values (uniform * = ();)
-#TODO: move pyaudio dependency from scripts into package
+#TODO: move pyaudio dependency from scratch_wt.py into livecode.py
+#TODO: move imsave from dreamer.py to livecode.py
 #TODO: allow Points to append any number of points at a time (can still draw fixed N at a time)
 #TODO: lazy cycling (don't compute all options each frame)
 #TODO: "needs_draw" flag on Layers / implicit draw order
@@ -295,6 +296,8 @@ class NBuffer(object):
 
     def activate(self):
         if self.n:
+            # gl.glPushAttrib(gl.GL_VIEWPORT_BIT)
+            # gl.glViewport(0, 0, *self.size)
             self.head = (self.head+1)%self.n
             self._state[self.head].activate()
             if not self.autoread:
@@ -302,6 +305,7 @@ class NBuffer(object):
 
     def deactivate(self):
         if self.n:
+            # gl.glPopAttrib(gl.GL_VIEWPORT_BIT)
             if self.autoread:
                 self.cpu_state = self.read(self.readback_buffer)
             self._state[self.head].deactivate()
@@ -376,6 +380,7 @@ class Points(object):
 
     def draw(self):
         with self.target:
+            gl.glViewport(0, 0, *self.target.size)
             for p,c,s in self.segments:
                 self.data['a_position'][:] = p
                 self.data['a_color'][:] = c
@@ -507,9 +512,9 @@ class VideoWaveTerrain(object):
     def sound(self):
         try:
             ps, cs = self.vwt.step(self.frame_count)
-            samps = np.ascontiguousarray(cs.mean(1)[:,2:])
-            ps = ps.reshape(-1,2)*2-1#np.ascontiguousarray(ps.reshape(-1,2)*2-1)
-            cs = cs.reshape(-1,4)
+            samps = np.ascontiguousarray(cs.mean(1)[:,2:]) # slice 2 channels, mean over voices
+            ps = ps.reshape(-1,2)*2-1 # points expects (-1, 1) domain
+            cs = cs.reshape(-1,4) # corresponding colors
             self.points.append((ps, cs, 8.))
         except Exception as e:
             logging.error(e, exc_info=True)

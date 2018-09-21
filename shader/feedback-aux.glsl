@@ -142,14 +142,14 @@ void main() {
   vec4 sharp = samp(history_t0_b0, px)-w1;
   sharp /= length(sharp)+eps;
 
-  vec3 scs = vec3(1., 1., 0.);
+  vec3 scs = vec3(0.5, 1., 0.5);
 
-  c2 += 0.2*(sat*scs.x + change*scs.y + sharp*scs.z)/(scs.x+scs.y+scs.z);
+  c2 += -0.03*(sat*scs.x + change*scs.y + sharp*scs.z)/(scs.x+scs.y+scs.z);
   // c2 += sat*(0.5-w.a)*0.1 + change*0.05;
 
   // c2 = c_sv + c2;
-  c2 = fract(c_sv + c2 + a0);
-  // c2 = fract(c2*0.9-0.1);
+  // c2 = fract(c_sv + c2 + a0);
+  c2 = fract(c2*(c2-0.25+a0)*1.333);
   // c2 = .5-.5*cos(2.*pi*c2);
   // c2 = sin(pi*c2);
 
@@ -158,12 +158,12 @@ void main() {
   // if(lc2>1.) c2 *= -fract(lc2)/lc2;
   // c2 = 0.5*(c2+1.);
 
-  c2 = -cos(2.*pi*(c2+a1))*0.5+0.5;
+  // c2 = 0.5-0.5*cos(2.*pi*(c2+a1));
 
   vec4 c = mix(c2, c1, drag);
 
   // c = max(vec4(0.), min(vec4(1.), c-0.05*(a1-0.0)));
-  // c = mix(c, 1.0-c.argb, a0);
+  c = mix(c, 1.0-c.argb, a0);
 
 
   // // vec4 h0 = c0;
