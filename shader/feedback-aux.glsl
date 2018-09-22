@@ -1,61 +1,14 @@
 uniform vec2 size;
 uniform sampler2D history_t0_b0;
-uniform sampler2D history_t1_b0;
+// uniform sampler2D history_t1_b0;
 uniform sampler2D filtered;
 uniform sampler2D aux;
 
 uniform float drag = 0.95;
 
-const float pi = 3.14159265359;
 float eps = 1e-5;
 
 out vec4 fragColor;
-
-float sum(vec4 x){
-  return dot(x,vec4(1.));
-}
-float sum(vec3 x){
-  return dot(x,vec3(1.));
-}
-float mean(vec4 x){
-  return sum(x)/4.;
-}
-float mean(vec3 x){
-  return sum(x)/3.;
-}
-
-float sigmoid(float x){
-  return 1./(exp(-x)+1.);
-}
-vec4 sigmoid(vec4 x){
-  return 1./(exp(-x)+1.);
-}
-
-vec4 samp(sampler2D t, vec2 px){
-  return texture(t, px/size);
-  // return texture(t, fract(px/size));
-}
-
-vec4 blur4pt(sampler2D t, vec2 px){
-  const vec3 d = vec3(1.,-1.,0.);
-  return (
-    samp(t, px+d.xz)
-    + samp(t, px+d.yz)
-    + samp(t, px+d.zx)
-    + samp(t, px+d.zy)
-    )/4.;
-}
-
-vec4 blur5pt(sampler2D t, vec2 px){
-  const vec3 d = vec3(1.,-1.,0.);
-  return (
-    samp(t, px)
-    + samp(t, px+d.xz)
-    + samp(t, px+d.yz)
-    + samp(t, px+d.zx)
-    + samp(t, px+d.zy)
-    )/5.;
-}
 
 mat2x4 centroid5pt(sampler2D t, vec2 px){
   const vec3 d = vec3(1.,-1.,0.);
@@ -73,7 +26,7 @@ mat2x4 centroid5pt(sampler2D t, vec2 px){
 void main() {
   vec2 px0 = gl_FragCoord.xy;
   vec2 px = px0;
-  vec2 p = px/size;
+  vec2 uv = px/size;
 
   vec4 c0 = samp(history_t0_b0, px);
   vec4 w0 = samp(filtered, px);
@@ -122,29 +75,31 @@ void main() {
   // c_acc /= nf;
   // c_acc /= (length(c_acc) + nf)/2;
 
-  vec4 c_sv = 0.1*cos(-2.*pi*(c_acc+p.xxxy*vec4(1.,2.,3.,1.)));
-  // vec4 c_sv = 0.05*cos(-2.*pi*p.xxxy*vec4(1.,2.,3.,1.));
+  vec4 c_sv = 0.1*cos(-2.*pi*(c_acc+uv.xxxy*vec4(1.,2.,3.,1.)));
+  // vec4 c_sv = 0.05*cos(-2.*pi*uv.xxxy*vec4(1.,2.,3.,1.));
   // c_sv += 0.1*w0;
   // c_sv += 0.05*sin(-2.*pi*samp(filtered, px+0.*(w0.rg-w0.ba)));
 
   px += drift;
 
   vec4 c1 = blur5pt(history_t0_b0, px);
-  vec4 w1 = samp(history_t1_b0, px);
+  // vec4 w1 = samp(history_t1_b0, px);
   vec4 a1 = samp(aux, px);
 
-  vec4 c2 = mix(c_acc.gbar, 1.-c_acc.barg, a0);//c_acc.argb;//c_acc.barg;
+  vec4 c2 = c_acc.gbar;//mix(c_acc.gbar, 1.-c_acc.barg, a0);//c_acc.argb;//c_acc.barg;
 
-  vec4 sat = c2 - (c2.r+c2.g+c2.b)/3.;//(c2.r+c2.g+c2.b+c2.a)/4.;
-  sat /= length(sat)+eps;
-  vec4 change = c2-w0;
-  change /= length(change)+eps;
-  vec4 sharp = samp(history_t0_b0, px)-w1;
-  sharp /= length(sharp)+eps;
+  vec4 sat = c2 - mean(c2.rgb);//(c2.r+c2.g+c2.b+c2.a)/4.;
+  // sat /= length(sat)+eps;
+  vec4 change = (c2-w0)/2.;
+  // change /= length(change)+eps;
+  vec4 sharp = samp(history_t0_b0, px)-c1;
+  // sharp /= length(sharp)+eps;
 
-  vec3 scs = vec3(0.5, 1., 0.5);
+  vec3 scsw = vec3(1., 1., -1.);
+  vec4 scs = (sat*scsw.x + change*scsw.y + sharp*scsw.z);
 
-  c2 += -0.03*(sat*scs.x + change*scs.y + sharp*scs.z)/(scs.x+scs.y+scs.z);
+  c2 += 0.05 * scs / (length(scs)+eps);
+
   // c2 += sat*(0.5-w.a)*0.1 + change*0.05;
 
   // c2 = c_sv + c2;

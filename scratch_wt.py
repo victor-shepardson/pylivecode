@@ -16,12 +16,15 @@ size = np.array(size)
 
 frame_count = 512
 
-screen = Layer(size, 'shader/display.glsl')
-feedback = Layer(size, 'shader/feedback-aux.glsl', n=3)
-filtered = Layer(size, 'shader/filter.glsl', n=2)
-readback = Layer(size//8, 'shader/readback.glsl', n=1, autoread=True)
+def get_shaders(s):
+    return ('shader/lib.glsl', 'shader/'+s+'.glsl')
 
-vwt = VideoWaveTerrain(size, frame_count, 3)
+screen = Layer(size, get_shaders('display'))
+feedback = Layer(size, get_shaders('feedback-aux'), n=2)
+filtered = Layer(size, get_shaders('filter'), n=2)
+readback = Layer(size//8, get_shaders('readback'), n=1, autoread=True)
+
+vwt = VideoWaveTerrain(size, frame_count, 3, point_shader=get_shaders('filter-accum'))
 
 app.use('glfw')
 config = app.configuration.Configuration()
@@ -44,9 +47,6 @@ def image():
     feedback()
     readback()
     vwt.feed(readback.cpu)
-    # option one: set viewport in NBuffer.activate, set screen size here, make screen aware of input buffer size somehow
-    # option two: modify Points shaders to be aware of buffer size
-    gl.glViewport(0, 0, *window.get_size())
     screen()
 
 audio = pa.PyAudio()
@@ -76,10 +76,9 @@ def on_close():
     audio.terminate()
     sys.exit(0)
 
-# @window.event
-# def on_resize(w,h):
-#     # screen.resize((w,h))
-#     pass
+@window.event
+def on_resize(w,h):
+    screen.resize((w,h))
 
 app.run()
 stream.start_stream()

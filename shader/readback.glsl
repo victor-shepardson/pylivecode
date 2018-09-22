@@ -3,11 +3,10 @@ uniform sampler2D color;
 
 out vec4 fragColor;
 
-const float pi = 3.14159265359;
-
 void main() {
   vec2 px = gl_FragCoord.xy;
   vec2 p = px/size;
+  vec2 r = vec2(textureSize(color, 0))/size;
 
   fragColor = texture(color, p);
 }

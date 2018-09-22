@@ -30,13 +30,12 @@ except ImportError:
 #TODO: fix hidpi + regular display
 #TODO: optimize VideoWaveTerrainJIT / debug popping
 # code improvements:
-#TODO: figure out glViewport call for Points.draw and window.on_resize
 #TODO: parse shaders to set `w` automatically (find `out` keywords in header)
 #TODO: parse shaders to set default uniform values (uniform * = ();)
 #TODO: move pyaudio dependency from scratch_wt.py into livecode.py
 #TODO: move imsave from dreamer.py to livecode.py
-#TODO: allow Points to append any number of points at a time (can still draw fixed N at a time)
-#TODO: lazy cycling (don't compute all options each frame)
+#TODO: allow Points to append any number of points at a time (could still draw fixed N at a time)
+#TODO: lazy cycling (don't compute unused buffers each frame)
 #TODO: "needs_draw" flag on Layers / implicit draw order
 #TODO: livecodeable parts of VideoWaveTerrainJIT
 # new features:
@@ -123,7 +122,6 @@ class LiveProgram(object):
     def reload(self):
         logging.debug(f'reloading shader program last loaded at {self.reloaded}')
         self.reloaded = dt.datetime.now()
-        # try:
         frag = '\n'.join(s.code for s in self.frag_sources)
         vert = '\n'.join(s.code for s in self.vert_sources)
         new_program = gloo.Program(vert, frag, **self.program_kw)
@@ -295,9 +293,9 @@ class NBuffer(object):
         return [self._state[i].color for i in idxs]
 
     def activate(self):
+        gl.glViewport(0, 0, *self.size)
         if self.n:
             # gl.glPushAttrib(gl.GL_VIEWPORT_BIT)
-            # gl.glViewport(0, 0, *self.size)
             self.head = (self.head+1)%self.n
             self._state[self.head].activate()
             if not self.autoread:
@@ -503,11 +501,11 @@ class VideoWaveTerrainJIT(object):
         return self.p, c #(x,y), (b,a)
 
 class VideoWaveTerrain(object):
-    def __init__(self, size, frame_count, n=1, short=False):
+    def __init__(self, size, frame_count, n=1, short=False, point_shader=None):
         self.frame_count = frame_count
         self.vwt = VideoWaveTerrainJIT(n)
         self.points = Points(size, frame_count*n)
-        self.filtered = Layer(size, 'shader/filter-accum.glsl', n=2)
+        self.filtered = Layer(size, point_shader, n=2)
 
     def sound(self):
         try:
