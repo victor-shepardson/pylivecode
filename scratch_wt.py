@@ -3,7 +3,7 @@ import itertools as it
 import numpy as np
 from glumpy import app, gl
 import pyaudio as pa
-from livecode import Layer, VideoWaveTerrain, log, cycle
+from livecode import makeWindow, Layer, VideoWaveTerrain, log, cycle
 import IPython
 
 gain = 0
@@ -25,13 +25,6 @@ filtered = Layer(size, get_shaders('filter'), n=2)
 readback = Layer(size//8, get_shaders('readback'), n=1, autoread=True)
 
 vwt = VideoWaveTerrain(size, frame_count, 3, point_shader=get_shaders('filter-accum'))
-
-app.use('glfw')
-config = app.configuration.Configuration()
-config.major_version = 3
-config.minor_version = 2
-config.profile = "core"
-window = app.Window(int(size[0]), int(size[1]), 'vwt', config=config, vsync=True)
 
 filtered.color = feedback
 feedback.filtered = filtered
@@ -63,6 +56,8 @@ stream = audio.open(
     stream_callback=sound,
     frames_per_buffer=frame_count
 )
+
+window = makeWindow(size, title='vwt')
 
 @window.event
 def on_draw(dt):

@@ -6,10 +6,10 @@ out vec4 fragColor;
 
 void main(){
   vec2 px = gl_FragCoord.xy;
-  vec4 s = samp(color, px);
+  // vec4 s = samp(color, px);
   vec4 c = mix(
-    s,
-    mix(samp(history_t0_b0, px), blur4pt(history_t0_b0, px), 0.5),
-    0.99);
+    blur5pt(color, px),
+    blur5pt(history_t0_b0, px),
+    0.97);
   fragColor = c;
 }

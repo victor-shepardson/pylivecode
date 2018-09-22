@@ -4,7 +4,7 @@ from collections import defaultdict, Iterable
 import itertools as it
 import numpy as np
 
-from glumpy import gloo, gl, library
+from glumpy import gloo, gl, library, app
 from glumpy.graphics.collections import PathCollection
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -29,6 +29,7 @@ except ImportError:
 #TODO: ipython in separate thread
 #TODO: fix hidpi + regular display
 #TODO: optimize VideoWaveTerrainJIT / debug popping
+#TODO: look into gaps in vwt paths
 # code improvements:
 #TODO: parse shaders to set `w` automatically (find `out` keywords in header)
 #TODO: parse shaders to set default uniform values (uniform * = ();)
@@ -108,6 +109,20 @@ class SourceCode(object):
             self.observer.join()
 
 # graphics tools on top of glumpy
+def makeWindow(size, title=None):
+    app.use('glfw')
+    config = app.configuration.Configuration()
+    config.major_version = 3
+    config.minor_version = 2
+    config.profile = "core"
+    return app.Window(int(size[0]), int(size[1]), title or '', config=config, vsync=True)
+# class Window(app.Window):
+#     def __init__(self, size, title=None):
+#         config = app.configuration.Configuration()
+#         config.major_version = 3
+#         config.minor_version = 2
+#         config.profile = "core"
+#         super().__init__(int(size[0]), int(size[1]), title or '', config=config, vsync=True)
 
 class LiveProgram(object):
     """gloo.Program which watches its source files for changes"""
@@ -421,6 +436,8 @@ def shape2(a):
     ('last_terrain', numba.float32[:,:,:]),
     ('p', numba.float32[:,:]),
     ('momentum', numba.float32[:,:]),
+    ('mdecay', numba.float32),
+    ('stepsize', numba.float32),
     ('t', numba.int64),
     # ('sr', numba.int64),
     ('t_cur_added', numba.int64),
@@ -436,6 +453,8 @@ class VideoWaveTerrainJIT(object):
         self.last_terrain = np.zeros((2,2,4), dtype=np.float32)
         self.p = np.random.random((n, 2)).astype(np.float32)
         self.momentum = np.zeros((n, 2)).astype(np.float32)
+        self.mdecay = 0.99
+        self.stepsize = 0.03
         self.t = 0
         # self.sr = 24000
         self.t_next_added = -1
@@ -485,16 +504,17 @@ class VideoWaveTerrainJIT(object):
         for i in range(self.n):
             val = self.get(self.p[i], m)
 
-            delta = np.sin(np.pi*(val[:2] - val[2:]))
-            # delta = np.sin(val[:2]*2*np.pi)#val[:2]-0.5 #move on (r, g)
+            # delta = np.sin(np.pi*(val[:2] - val[2:]))
+            delta = np.sin(val[:2]*2*np.pi)
+            # delta = val[:2]-0.5 #move on (r, g)
             # delta /= np.linalg.norm(delta) + 1e-15
 
             r = i*np.pi*2/np.float32(self.n)
             x,y = np.cos(r), np.sin(r)
             delta = np.array([x*delta[0]-y*delta[1], x*delta[1]+y*delta[0]])
 
-            self.momentum[i] = self.momentum[i]*0.5 + delta
-            self.p[i] += self.momentum[i] / (np.linalg.norm(self.momentum[i]) + 1e-12) / (shape2(self.cur_terrain)-1)
+            self.momentum[i] = self.momentum[i]*self.mdecay + delta
+            self.p[i] += self.momentum[i] / (np.linalg.norm(self.momentum[i]) + 1e-12) / (shape2(self.cur_terrain)-1) * self.stepsize
             c[i] = val
         self.p %= 1.0
         self.t += 1

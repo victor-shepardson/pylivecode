@@ -34,20 +34,21 @@ void main() {
 
   vec4 d0 = mix(c0, w0, 0.5);
   vec2 drift;
-  drift = 4.*vec2(0.5*sin(2.*pi*d0.a), 0.1-d0.a);
-  // drift = vec2(0.,-2.);
+  drift = 2.*vec2(0.5*sin(2.*pi*d0.a), 0.5-d0.a);
+  // drift = vec2(0.,-1.);
+  // drift = vec2(0);
 
   mat2x4 cent;
   vec4 w = w0;
   vec4 c_acc = vec4(0.);
   vec2 delta = vec2(0.);
-  const int n = 4;
+  const int n = 5;
   float nf = 0.;
   for(int i=0; i<n; i++){
     nf+=1.;
     w = samp(filtered, px);//*(0.5+w.gbra)*2.;// + w.gbar;
-    w -= mean(w)*0.5;
-    // w /= length(w)+eps;
+    // w -= mean(w);//*0.5;
+    w /= length(w)+eps;
     cent = centroid5pt(history_t0_b0, px);
     // delta = 2.*delta + sin(pi*(w.rg-w.ba));
     delta = -1.*w*cent;//*pow(1.5, float(i));
@@ -58,15 +59,15 @@ void main() {
     c_acc += samp(history_t0_b0, px);
     // c_acc = 1.*c_acc.gbar;
     // if(sin(2*pi*c_acc.a) > 1.-nf*2./float(n)) break;
-    // if(w.a > 1.-nf/float(n)) break;
-    if(length(c_acc-mean(c_acc)) > sqrt(2.)*nf/float(n)) break;
-    vec4 cl = samp(history_t0_b0, px);
+    // if(w.a > 1. - nf/float(n)) break;
+    // if(length(c_acc-mean(c_acc)) > sqrt(2.)*nf/float(n)) break;
+    // vec4 cl = samp(history_t0_b0, px);
     // if(1.-cos(length(cl-mean(cl))) > 2.-2.*nf/float(n)) break;
   }
   // c_acc = 0.5+0.5*cos(sqrt(c_acc));
   // c_acc = sin(pi*c_acc/(abs(c_acc.a)+1.));
   // c_acc /= c_acc.a+(1.-w0.a)+eps;
-  c_acc /= c_acc.a+0.2;
+  c_acc /= c_acc.a+0.25;
   // c_acc /= nf*1.5*sigmoid(4.*dot(w0-mean(w0), c_acc-mean(c_acc)))+eps;
   // c_acc /= mix(c_acc.g, c_acc.b, 1.-c_acc.a)+eps;
   // c_acc = exp(1.5*c_acc);
@@ -75,7 +76,7 @@ void main() {
   // c_acc /= nf;
   // c_acc /= (length(c_acc) + nf)/2;
 
-  vec4 c_sv = 0.1*cos(-2.*pi*(c_acc+uv.xxxy*vec4(1.,2.,3.,1.)));
+  vec4 c_sv = 0.05*cos(-2.*pi*(c_acc+uv.xxyy*vec4(1.,1.,1.,1.)+vec4(0.,.25,0.,.25)));
   // vec4 c_sv = 0.05*cos(-2.*pi*uv.xxxy*vec4(1.,2.,3.,1.));
   // c_sv += 0.1*w0;
   // c_sv += 0.05*sin(-2.*pi*samp(filtered, px+0.*(w0.rg-w0.ba)));
@@ -98,13 +99,15 @@ void main() {
   vec3 scsw = vec3(1., 1., -1.);
   vec4 scs = (sat*scsw.x + change*scsw.y + sharp*scsw.z);
 
-  c2 += 0.05 * scs / (length(scs)+eps);
+  c2 += 0.1 * scs / (length(scs)+eps);
 
   // c2 += sat*(0.5-w.a)*0.1 + change*0.05;
 
+  // c2 = fract(c2);
   // c2 = c_sv + c2;
-  // c2 = fract(c_sv + c2 + a0);
-  c2 = fract(c2*(c2-0.25+a0)*1.333);
+  c2 = fract(c_sv + c2);
+  // c2 = fract(c2*(c2-0.25+a0)*1.333);
+  // c2 = fract(c2*(c2-0.25+a0)*1.333-c_sv/4.);
   // c2 = .5-.5*cos(2.*pi*c2);
   // c2 = sin(pi*c2);
 
