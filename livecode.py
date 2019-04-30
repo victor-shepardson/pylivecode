@@ -55,11 +55,38 @@ class log(metaclass=_log):
 def cycle(iterable, period=1):
     return it.cycle(it.chain.from_iterable(it.repeat(x, period) for x in iterable))
 
+
+class Var(object):
+    """convert everything to iterables & wrap primitives"""
+    def __init__(self, v=None):
+        self.set(v)
+    def __next__(self):
+        return next(self.v)
+    def set(self, v):
+        if not isinstance(v, it.cycle):
+            v = it.cycle((v,))
+        self.v = v
+
+class Vars(defaultdict):
+    """store Vars and provide syntactic sugar for setting/incrementing"""
+    def __init__(self, **kwargs):
+        super().__init__(Var)
+
+        for k,v in kwargs.items():
+            self.__setattr__(k, v)
+
+    def __getattr__(self, k):
+        return next(self[k])
+
+    def __setattr__(self, k, v):
+        self[k].set(v)
+
 # file watching/reloading tools
 def as_iterable(arg):
     return arg if isinstance(arg, Iterable) and not isinstance(arg, str) else (arg,)
 
 def is_shader_path(sh):
+    """assume source code of containing '{', else assume path"""
     return isinstance(sh, str) and '{' not in sh
 
 observer = Observer()
@@ -103,13 +130,14 @@ class SourceCode(object):
     def code(self):
         return self._code
 
-    def __del__(self):
-        if self.observer is not None:
-            self.observer.stop()
-            self.observer.join()
+    # def __del__(self):
+        # if self.observer is not None:
+            # self.observer.stop()
+            # self.observer.join()
 
 # graphics tools on top of glumpy
 def makeWindow(size, title=None):
+    """Return a glumpy app.Window with standard settings"""
     app.use('glfw')
     config = app.configuration.Configuration()
     config.major_version = 3
@@ -125,7 +153,7 @@ def makeWindow(size, title=None):
 #         super().__init__(int(size[0]), int(size[1]), title or '', config=config, vsync=True)
 
 class LiveProgram(object):
-    """gloo.Program which watches its source files for changes"""
+    """encapsulates a gloo.Program and watches its source files for changes"""
     def __init__(self, vert=None, frag=None, **kw):
         self.frag_sources = frag and [SourceCode(s) for s in as_iterable(frag)]
         self.vert_sources = vert and [SourceCode(s) for s in as_iterable(vert)]
@@ -158,7 +186,7 @@ class LiveProgram(object):
         try:
             if self.needs_reload:
                 self.reload()
-            # shaders not actually compiled until draw call
+            # shaders not actually compiled by gloo until draw call
             self.program.draw(*args, **kwargs)
         except Exception as e:
             logging.error(e)
@@ -179,6 +207,29 @@ class LiveProgram(object):
 
 
 class Layer(object):
+    """A 2D drawing layer.
+
+    attrs:
+        `program`: a LiveProgram shader
+        `target`: an NBuffer render target
+
+    Each set attribute will be stored and passed to every `draw` call,
+    and when a Layer is passed to `draw`, it is automatically unwrapped to its
+    target's state. Thus Layers can be patched together simply by setting the
+    attribute matching a `uniform sampler2D` defined in the shader:
+        ```
+        layer_a.input_tex = layer_b
+        layer_b.input_tex = layer_a
+        ```
+    builds a feedback loop between `layer_a` and `layer_b`.
+
+    Furthermore all buffers `self.target.history` are automatically bound to
+    uniforms of the form "history_t{i}_b{j}" (if they exist). So ping-ponging feedback is set up without patching provided `self.n >=2`
+
+    Attributes may be set to an infinite iterator, causing each call to `draw`
+    advance the iterator and use the returned value. A finite iterator will be
+    automatically converted via `itertools.cycle`.
+    """
     def __init__(self, size, shader, n=0, **buffer_args):
         self.program = LiveProgram(vert="""
             in vec2 position;
@@ -216,6 +267,7 @@ class Layer(object):
         return self.state
 
     def __call__(self):
+        """call `draw` with all stored arguments"""
         self.draw(**{k:next(v) for k,v in self.draw_kwargs.items()})
 
     def resize(self, size):
@@ -223,7 +275,7 @@ class Layer(object):
         self.program['size'] = size
 
     def __setattr__(self, k, v):
-        """sugar: most attributes fall through to shader program"""
+        """sugar: most attributes fall through to shader program."""
         if k in ['program', 'draw_method', 'target', 'draw_kwargs']:
             super().__setattr__(k, v)
         else:
@@ -247,7 +299,7 @@ class NBuffer(object):
             wrapping=gl.GL_REPEAT, interpolation=gl.GL_LINEAR):
         """Circular collection of FrameBuffer
         size: 2d dimensions in pixels
-        n: number of framebuffers:
+        n: number of framebuffers (time dimension):
             n=0 is a dummy
             n=1 is just an FBO
             n=2 ping-pongs (one history buffer available)
@@ -257,13 +309,15 @@ class NBuffer(object):
             if True, replace cpu_state when deactivating.
             if False, replace when cpu property is requested since activating
         short:
-            use int8 texture
+            use int8 texture (otherwise float32)
         channels:
             number of color channels
         wrapping:
             gl.GL_CLAMP_TO_EDGE, GL_REPEAT, or GL_MIRRORED_REPEAT
         interpolation:
             gl.GL_NEAREST or GL_LINEAR
+
+        An NBuffer has size[0]*size[1]*n*w*channels total pixels.
         """
         self.size = size
         self.dtype = np.uint8 if short else np.float32
@@ -284,30 +338,49 @@ class NBuffer(object):
         self.readback_buffer = 0
 
     def resize(self, size):
+        """call resize for every constituent buffer"""
         self.size = size
         for buf in self._state:
             buf.resize(*size)
 
     def read(self, b):
+        """read back pixels to numpy from buffer `b`."""
         assert self.n>0, "nothing to read from NBuffer of length 0"
         return self.state[b].get()
 
     @property
     def cpu(self):
+        """return the cpu-side representation of the `readback_buffer`.
+        call `read` to get it if necessary.
+        """
         if self.cpu_state is None:
             self.cpu_state = self.read(self.readback_buffer)
         return self.cpu_state
 
     @property
     def state(self):
+        """return the ColorBuffers under `self.head`.
+
+        within the NBuffer's context manager, this is the oldest set of buffers
+        (to be overwritten). outside the context manager, it is the most recently
+        written (to be read).
+        """
         return self._state[self.head].color if self.n else None
 
     @property
     def history(self):
+        """return list of all ColorBuffers except at `self.head`, ordered from
+        newest to oldest.
+        e.g.:
+            n = 2, inside context manager: history[0] is
+        """
         idxs = (self.head-1-np.arange(self.n-1))%self.n
         return [self._state[i].color for i in idxs]
 
     def activate(self):
+        """prepare to draw:
+        increment self.head, invalidate the cpu rep and activate the render target
+        """
         gl.glViewport(0, 0, *self.size)
         if self.n:
             # gl.glPushAttrib(gl.GL_VIEWPORT_BIT)
@@ -317,6 +390,7 @@ class NBuffer(object):
                 self.cpu_state = None
 
     def deactivate(self):
+        """deactivate render target"""
         if self.n:
             # gl.glPopAttrib(gl.GL_VIEWPORT_BIT)
             if self.autoread:
