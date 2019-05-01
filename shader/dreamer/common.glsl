@@ -1,4 +1,4 @@
-const bool circle = false;
+const bool circle = true;
 const float circle_size = 0.95;
 const float fuzz = 1./64.;
 vec4 bgcol = vec4(0.);

@@ -1,7 +1,7 @@
-import sys, os, logging
-import re
-import datetime as dt
+import sys, os, logging, threading, re
+from multiprocessing import Pool
 from collections import defaultdict, Iterable
+import datetime as dt
 import itertools as it
 import numpy as np
 
@@ -11,10 +11,26 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 try:
+    import IPython
+except ImportError:
+    logging.warning('shell unavailable; install IPython')
+
+try:
+    from imageio import imwrite
+except ImportError:
+    logging.warning('image saving unvailable; install imageio')
+
+try:
+    import pyaudio as pa
+    audio = pa.PyAudio()
+except ImportError:
+    logging.warning('audio unavailable; install pyaudio')
+
+try:
     import numba
     from numba import jit, jitclass
 except ImportError:
-    logging.warning('numba not found')
+    logging.warning('numba not found, JIT code will be slow')
     # dummy numba decorators
     dummy_decorator = lambda *a, **kw: lambda f: f
     jit = jitclass = dummy_decorator
@@ -149,16 +165,34 @@ class GLSLSourceCode(SourceCode):
         # self.lines = lines
 
 # graphics tools on top of glumpy
-def makeWindow(size, title=None):
+def make_window(image_fn, size, title=None, cleanup=True):
     """Return a glumpy app.Window with standard settings"""
     app.use('glfw')
     config = app.configuration.Configuration()
     config.major_version = 3
     config.minor_version = 2
     config.profile = "core"
-    return app.Window(
+    window = app.Window(
         int(size[0]), int(size[1]),
         title or '', config=config, vsync=True)
+
+    @window.event
+    def on_draw(dt):
+        window.set_title('fps: {}'.format(window.fps).encode('ascii'))
+        image_fn()
+
+    if cleanup:
+        @window.event
+        def on_close():
+            for stream in streams:
+                stream.stop_stream()
+                stream.close()
+            audio.terminate()
+            for shell in shells:
+                shell.ex('exit()')
+            sys.exit(0)
+
+    return window
 
 
 class LiveProgram(object):
@@ -242,8 +276,10 @@ class Layer(object):
     def __init__(self, size, shader, n=0, **buffer_args):
         self.program = LiveProgram(vert="""
             in vec2 position;
+            out vec2 uv;
             void main(){
               gl_Position = vec4(position, 0.0, 1.0);
+              uv = position*.5+.5;
             }""", frag=shader, count=4, version='330')
         self.program['size'] = size
         dtype = [('position', np.float32, 2)]
@@ -279,6 +315,7 @@ class Layer(object):
     def __call__(self, **call_kwargs):
         """call `draw` with all stored arguments"""
         self.draw(**{k:next(v) for k,v in self.draw_kwargs.items()}, **call_kwargs)
+        return self
 
     def resize(self, size):
         self.target.resize(size)
@@ -629,3 +666,54 @@ class VideoWaveTerrain(object):
 
     def __getattr__(self, k):
         return getattr(self.vwt, k)
+
+# sound tools on top of pyaudio
+
+streams = []
+def make_stream(sound_fn, frame_count, channels=2, sample_rate=48000):
+    global audio, streams
+
+    def stream_callback(in_data, fc, time_info, status):
+        data = sound_fn()
+        return (data, pa.paContinue)
+
+    stream = audio.open(
+        format=pa.paFloat32,
+        channels=channels,
+        rate=sample_rate,
+        output=True,
+        stream_callback=stream_callback,
+        frames_per_buffer=frame_count,
+        start=False
+    )
+    streams.append(stream)
+    return stream
+
+# interactivity tools
+
+shells = []
+def start_shell(ns):
+    """start an IPython shell in a new thread with the given namespace"""
+    global shells
+    shell = IPython.terminal.embed.InteractiveShellEmbed()
+    threading.Thread(target=shell.mainloop, kwargs={'local_ns': ns}).start()
+    shells.append(shell)
+    return shell
+
+# recording tools
+
+def init_imsave_mp(n_procs=6, max_tasks=12):
+    global imsave_pool, max_imsave_tasks
+    max_imsave_tasks = max_tasks
+    imsave_pool = Pool(n_procs)
+
+imsave_tasks = []
+def imsave_mp(path, arr, compress_level=5):
+    global imsave_tasks, imsave_pool
+    # add a task to the pool
+    imsave_tasks.append(imsave_pool.apply_async(
+        imwrite, (path, arr), dict(compress_level=compress_level),
+        error_callback=logging.error))
+    # block until there are fewer than max_imsave_tasks
+    while len(imsave_tasks) > max_imsave_tasks:
+        imsave_tasks = [t for t in imsave_tasks if not t.ready()]

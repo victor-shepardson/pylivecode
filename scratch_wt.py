@@ -2,22 +2,17 @@ import sys, logging
 import itertools as it
 import numpy as np
 from glumpy import app, gl
-import pyaudio as pa
-from livecode import makeWindow, Layer, VideoWaveTerrain, log, cycle, Vars
-import IPython
-import threading
+from livecode import make_window, make_stream, start_shell, Layer, VideoWaveTerrain, Vars, log, cycle, audio
 
-# primitives need to be wrapped in a Var since shell runs in its own thread
-V = Vars()
-V.gain = 0
-
-# size = 200, 200
-# size = 620, 660
 # size = 900, 900
 size = 1920, 1920
 size = np.array(size)
 
 frame_count = 512
+
+# global primitives need to be wrapped in a Var since shell runs in its own thread
+V = Vars()
+V.gain = 0
 
 def get_shaders(s):
     return ('shader/lib.glsl', 'shader/'+s+'.glsl')
@@ -47,48 +42,26 @@ def image():
     filtered()
     vwt.draw()
     feedback()
-    readback()
-    vwt.feed(readback.cpu)
+    vwt.feed(readback().cpu)
     screen()
 
-audio = pa.PyAudio()
-def sound(in_data, fc, time_info, status):
-    assert fc==frame_count, fc
+# sound generator
+
+def sound():
     data = V.gain*vwt.sound()
-    return (data, pa.paContinue)
+    return data
 
-stream = audio.open(
-    format=pa.paFloat32,
-    channels=2,
-    rate=24000,
-    output=True,
-    stream_callback=sound,
-    frames_per_buffer=frame_count,
-    start=False
-)
 
-window = makeWindow(size, title='vwt')
+# start app
 
-@window.event
-def on_draw(dt):
-    window.set_title('fps: {}'.format(window.fps).encode('ascii'))
-    image()
-
-@window.event
-def on_close():
-    stream.stop_stream()
-    stream.close()
-    audio.terminate()
-    sys.exit(0)
-
+window = make_window(image, size, title='vwt')
 @window.event
 def on_resize(w,h):
     screen.resize((w,h))
 
-shell = IPython.terminal.embed.InteractiveShellEmbed()
-threading.Thread(target=shell.mainloop, kwargs={'local_ns': locals()}).start()
+stream = make_stream(sound, frame_count, channels=2, sample_rate=24000)
+stream.start_stream()
 
-# stream.start_stream()
-threading.Thread(target=stream.start_stream).start()
+shell = start_shell(locals())
 
 app.run()
