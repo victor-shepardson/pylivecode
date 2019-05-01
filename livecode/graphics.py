@@ -1,6 +1,6 @@
 """graphics tools on top of glumpy"""
 
-import logging, re
+import sys, logging, re
 import itertools as it
 import datetime as dt
 import numpy as np
