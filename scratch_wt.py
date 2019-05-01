@@ -25,6 +25,7 @@ filtered = Layer(size, get_shaders('filter'), n=2)
 readback = Layer(size//8, get_shaders('readback'), n=1, autoread=True)
 
 vwt = VideoWaveTerrain(size, frame_count, 3, point_shader=get_shaders('filter-accum'))
+vwt.filtered.decay = 0.9
 
 # patching
 

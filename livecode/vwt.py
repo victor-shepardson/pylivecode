@@ -21,17 +21,18 @@ except ImportError:
 
 from . graphics import Layer, Points
 
+njit = jit(nopython=True, fastmath=True)
 
-@jit(nopython=True)
+@njit
 def lerp(a, b, m):
     return a*(1-m) + b*m
 
-@jit(nopython=True)
+@njit
 def _mcoords(x):
     x_ = int(x)
     return x_, x_+1, x-x_
 
-@jit(nopython=True)
+@njit
 def interp2d(a, p):
     """interpolating ndarray access"""
     x_lo, x_hi, x_m = _mcoords(p[0])
@@ -40,9 +41,13 @@ def interp2d(a, p):
     a = lerp(a[0], a[1], x_m)
     return lerp(a[0], a[1], y_m)
 
-@jit(nopython=True)
+@njit
 def shape2(a):
     return np.float32(a.shape[:2])
+
+@njit
+def norm2(v):
+    return v / (np.sqrt(v[0]*v[0]+v[1]*v[1]) + 1e-12)
 
 #TODO: how often are frames repeated?
 @jitclass([
@@ -50,7 +55,9 @@ def shape2(a):
     ('cur_terrain', numba.float32[:,:,:]),
     ('last_terrain', numba.float32[:,:,:]),
     ('p', numba.float32[:,:]),
+    ('c', numba.float32[:,:]),
     ('momentum', numba.float32[:,:]),
+    ('pixel_size', numba.float32[:]),
     ('mdecay', numba.float32),
     ('stepsize', numba.float32),
     ('t', numba.int64),
@@ -63,11 +70,15 @@ def shape2(a):
 ])
 class VideoWaveTerrainJIT(object):
     def __init__(self, n):#, max_len=3):
+        # buffers:
         self.next_terrain = np.zeros((2,2,4), dtype=np.float32)
         self.cur_terrain = np.zeros((2,2,4), dtype=np.float32)
         self.last_terrain = np.zeros((2,2,4), dtype=np.float32)
         self.p = np.random.random((n, 2)).astype(np.float32)
-        self.momentum = np.zeros((n, 2)).astype(np.float32)
+        self.c = np.zeros((n, 4), dtype=np.float32)
+        self.momentum = np.zeros((n, 2), dtype=np.float32)
+        self.pixel_size = np.ones(2, dtype=np.float32)
+        # parameters:
         self.mdecay = 0.99
         self.stepsize = 0.03
         self.t = 0
@@ -78,20 +89,30 @@ class VideoWaveTerrainJIT(object):
         self.t_switched = 0
         self.n = n
 
+
     def feed(self, frame):
+        # stage a new frame; if it isn't consumed by `switch` before `feed` is
+        # called again, it is lost
+        # duplicate edges to simplify wrapping
         frame = np.concatenate((frame, frame[0:1]), 0)
         frame = np.concatenate((frame, frame[:,0:1]), 1)
+        # stage the next frame of terrain
         self.next_terrain = frame.astype(np.float32)
         self.t_next_added = self.t
 
     def switch(self):
+        # consume the staged next frame of terrain
+        # if a new one wasn't staged, the most recent will just be repeated
         self.last_terrain = self.cur_terrain
         self.t_last_added = self.t_cur_added
         self.cur_terrain = self.next_terrain
         self.t_cur_added = self.t_next_added
         self.t_switched = self.t
+        self.pixel_size = 1/(shape2(self.cur_terrain)-1)
 
     def get(self, p, m):
+        # sample the terrain volume at postion p and fractional distance m between
+        # last and current terrains
         return lerp(
             interp2d(self.last_terrain, p*(shape2(self.last_terrain)-1)),
             interp2d(self.cur_terrain, p*(shape2(self.cur_terrain)-1)),
@@ -99,41 +120,51 @@ class VideoWaveTerrainJIT(object):
         )
 
     def step(self, n_steps):
+        # run for n_steps and return positions + colors for each agent
+        # currently allocates an array each time, probably shouldn't do that
         ps = np.empty((n_steps, self.n, 2), dtype=np.float32)
         cs = np.empty((n_steps, self.n, 4), dtype=np.float32)
         for i in range(n_steps):
-            p, c = self._step()
-            ps[i] = p
-            cs[i] = c
+            # p, c = self._step()
+            # ps[i] = p
+            # cs[i] = c
+            self._step()
+            ps[i] = self.p
+            cs[i] = self.c
         return ps, cs
 
     def _step(self):
+        # run a single step for each agent
         t = self.t - self.t_switched
+        # duration of current frame is estimated by duration of previous frame
         dur = self.t_cur_added - self.t_last_added
-        if t >= dur:
+        # once as much time has passed as between previous two frames, consume
+        # the staged frame (if there is one)
+        if t >= dur:# and self.t_next_added > self.t_cur_added:
             self.switch()
             m = 0.0
         else:
             m = np.minimum(1.,np.float32(t)/np.maximum(1., np.float32(dur)))
-        c = np.empty((self.n, 4))
+        # again, allocating arrays here is probably bad
+        # c = np.empty((self.n, 4))
         for i in range(self.n):
-            val = self.get(self.p[i], m)
+            self.c[i] = self.get(self.p[i], m)
 
-            # delta = np.sin(np.pi*(val[:2] - val[2:]))
-            delta = np.sin(val[:2]*2*np.pi)
-            # delta = val[:2]-0.5 #move on (r, g)
-            # delta /= np.linalg.norm(delta) + 1e-15
+            val = self.c[i]
+            delta = val[:2]-0.5 #move on (r, g)
+            # delta = norm2(val[:2]-0.5) #move on (r, g)
 
+            # rotate delta by agent index
             r = i*np.pi*2/np.float32(self.n)
             x,y = np.cos(r), np.sin(r)
             delta = np.array([x*delta[0]-y*delta[1], x*delta[1]+y*delta[0]])
 
             self.momentum[i] = self.momentum[i]*self.mdecay + delta
-            self.p[i] += self.momentum[i] / (np.linalg.norm(self.momentum[i]) + 1e-12) / (shape2(self.cur_terrain)-1) * self.stepsize
-            c[i] = val
+            self.p[i] += (
+                norm2(self.momentum[i]) * self.pixel_size * self.stepsize
+                )
         self.p %= 1.0
         self.t += 1
-        return self.p, c #(x,y), (b,a)
 
 class VideoWaveTerrain(object):
     def __init__(self, size, frame_count, n=1, short=False, point_shader=None):
@@ -146,6 +177,7 @@ class VideoWaveTerrain(object):
         try:
             ps, cs = self.vwt.step(self.frame_count)
             samps = np.ascontiguousarray(cs.mean(1)[:,2:]) # slice 2 channels, mean over voices
+            # collapse time, agent dimensions
             ps = ps.reshape(-1,2)*2-1 # points expects (-1, 1) domain
             cs = cs.reshape(-1,4) # corresponding colors
             self.points.append((ps, cs, 8.))
@@ -160,3 +192,9 @@ class VideoWaveTerrain(object):
 
     def __getattr__(self, k):
         return getattr(self.vwt, k)
+
+    def __setattr__(self, k, v):
+        if k in ('frame_count', 'vwt', 'points', 'filtered'):
+            super().__setattr__(k, v)
+        elif k in ('mdecay', 'stepsize'):
+            setattr(self.vwt, k, v)

@@ -3,6 +3,7 @@
 import sys, logging, re
 import itertools as it
 import datetime as dt
+from queue import Queue
 import numpy as np
 
 from glumpy import gloo, gl, library
@@ -294,7 +295,7 @@ class Points(object):
     https://github.com/glumpy/glumpy/blob/master/examples/gloo-trail.py
     """
     def __init__(self, size, n):
-        self.segments = []
+        self.segments = Queue()
         self.target = NBuffer(size, 1)
         vert = """
         in vec3  a_position;
@@ -347,18 +348,20 @@ class Points(object):
     def append(self, segment):
         """segment is a tuple of (positions, colors, sizes)"""
         assert len(segment[0])==len(self.data)
-        self.segments.append(segment)
+        self.segments.put(segment)
 
     def draw(self):
+        # consume all segments present at start of drawing
         with self.target:
             gl.glViewport(0, 0, *self.target.size)
-            for p,c,s in self.segments:
+            gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+            n = self.segments.qsize()
+            for _ in range(n):
+                p,c,s = self.segments.get()
                 self.data['a_position'][:] = p
                 self.data['a_color'][:] = c
                 self.data['a_size'][:] = s
                 # gl.glClearColor(0,0,0,0.001)
                 # gl.glEnable(gl.GL_BLEND)
                 # gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
-                gl.glClear(gl.GL_COLOR_BUFFER_BIT)
                 self.program.draw(gl.GL_POINTS)
-        self.segments = []

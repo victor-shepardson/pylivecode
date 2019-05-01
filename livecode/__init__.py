@@ -24,7 +24,6 @@ from . vwt import *
 #TODO: look into gaps in vwt paths
 
 # code improvements:
-#TODO: break into modules
 #TODO: parse shaders to set default uniform values (uniform * = ();)
 #TODO: allow Points to append any number of points at a time (could draw N at a time)
 #TODO: lazy cycling (don't compute unused buffers each frame)
