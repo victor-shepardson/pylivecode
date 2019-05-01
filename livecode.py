@@ -1,4 +1,5 @@
 import sys, os, logging
+import re
 import datetime as dt
 from collections import defaultdict, Iterable
 import itertools as it
@@ -26,12 +27,10 @@ except ImportError:
     numba = dummy()
 
 # critical bugs/performance issues:
-#TODO: ipython in separate thread
 #TODO: fix hidpi + regular display
 #TODO: optimize VideoWaveTerrainJIT / debug popping
 #TODO: look into gaps in vwt paths
 # code improvements:
-#TODO: parse shaders to set `w` automatically (find `out` keywords in header)
 #TODO: parse shaders to set default uniform values (uniform * = ();)
 #TODO: move pyaudio dependency from scratch_wt.py into livecode.py
 #TODO: move imsave from dreamer.py to livecode.py
@@ -110,11 +109,8 @@ class SourceCode(object):
         self.changed = self.path = self._code = self.observer = None
         if is_shader_path(arg):
             self.path = os.path.abspath(arg)
-            # self.observer = Observer()
             source_handler.add_instance(self)
             observer.schedule(source_handler, os.path.dirname(self.path))
-            # self.observer.schedule(source_handler, os.path.dirname(self.path))
-            # self.observer.start()
         else:
             self._code = arg
         logging.debug(f'SourceCode with path {self.path}')
@@ -124,16 +120,33 @@ class SourceCode(object):
         if self.path:
             with open(self.path) as src:
                 self._code = src.read()
+        self.update()
         self.changed = dt.datetime.now()
 
     @property
     def code(self):
         return self._code
 
-    # def __del__(self):
-        # if self.observer is not None:
-            # self.observer.stop()
-            # self.observer.join()
+    def update(self):
+        pass
+
+class GLSLSourceCode(SourceCode):
+    collapse_regex = re.compile(
+        r'\{.*\}|/\*.*\*/|layout\s*\(\s*location\s*=\s*\d+\s*\)',
+        flags=re.DOTALL)
+
+    def update(self):
+        # parse for uniforms and outs
+        # replace content between curly braces with ; split on ;
+        lines = re.sub(GLSLSourceCode.collapse_regex, ';', self._code).split(';')
+        lines = [l.strip() for l in lines]
+        lines = [l for l in lines if l and not l.startswith('//')]
+        def parse_decs(match):
+            return {tuple(l.split()[1:3]) for l in lines if l.startswith(match)}
+        self.ins = parse_decs('in')
+        self.outs = parse_decs('out')
+        self.uniforms = parse_decs('uniform')
+        # self.lines = lines
 
 # graphics tools on top of glumpy
 def makeWindow(size, title=None):
@@ -143,20 +156,16 @@ def makeWindow(size, title=None):
     config.major_version = 3
     config.minor_version = 2
     config.profile = "core"
-    return app.Window(int(size[0]), int(size[1]), title or '', config=config, vsync=True)
-# class Window(app.Window):
-#     def __init__(self, size, title=None):
-#         config = app.configuration.Configuration()
-#         config.major_version = 3
-#         config.minor_version = 2
-#         config.profile = "core"
-#         super().__init__(int(size[0]), int(size[1]), title or '', config=config, vsync=True)
+    return app.Window(
+        int(size[0]), int(size[1]),
+        title or '', config=config, vsync=True)
+
 
 class LiveProgram(object):
     """encapsulates a gloo.Program and watches its source files for changes"""
     def __init__(self, vert=None, frag=None, **kw):
-        self.frag_sources = frag and [SourceCode(s) for s in as_iterable(frag)]
-        self.vert_sources = vert and [SourceCode(s) for s in as_iterable(vert)]
+        self.frag_sources = frag and [GLSLSourceCode(s) for s in as_iterable(frag)]
+        self.vert_sources = vert and [GLSLSourceCode(s) for s in as_iterable(vert)]
         self.program = None
         self.program_kw = kw
         self.reloaded = None
@@ -245,7 +254,8 @@ class Layer(object):
         ]
         self.program.bind(quad_arrays)
         self.draw_method = gl.GL_TRIANGLE_STRIP
-        self.target = NBuffer(size, n, **buffer_args)
+        w = sum(len(s.outs) for s in self.program.frag_sources)
+        self.target = NBuffer(size, n, w, **buffer_args)
         self.draw_kwargs = {}
 
     def draw(self, **kwargs):
@@ -266,9 +276,9 @@ class Layer(object):
             self.program.draw(self.draw_method)
         return self.state
 
-    def __call__(self):
+    def __call__(self, **call_kwargs):
         """call `draw` with all stored arguments"""
-        self.draw(**{k:next(v) for k,v in self.draw_kwargs.items()})
+        self.draw(**{k:next(v) for k,v in self.draw_kwargs.items()}, **call_kwargs)
 
     def resize(self, size):
         self.target.resize(size)

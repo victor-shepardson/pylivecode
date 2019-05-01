@@ -24,11 +24,15 @@ def get_shaders(s):
     return ('shader/dreamer/common.glsl', 'shader/dreamer/'+s)
 
 post = Layer(size, get_shaders('post.glsl'), n=1)
-dreamer = Layer(size, get_shaders('dreamer.glsl'), n=2, w=2)
+dreamer = Layer(size, get_shaders('dreamer.glsl'), n=2)
 
 screen = Layer(size, 'shader/display.glsl')
 if save_images:
     readback = Layer(size, 'shader/readback.glsl', n=1, autoread=True, short=True, channels=3)
+    readback.color = post
+
+post.color = dreamer
+screen.color = post
 
 pool = Pool(n_saving_procs)
 tasks = []
@@ -45,12 +49,12 @@ def draw():
 
     for _ in range(steps_per_frame):
         dreamer(frame=frame)
-    post(color=dreamer.state[0], frame=frame)
+        post(frame=frame)
 
-    screen(color=post)
+    screen()
 
     if save_images and frame%2:
-        readback(color=post)
+        readback()
         imsave_mp(f'png/dreamer/{frame//2:06}.png', readback.cpu)
 
     frame+=1
