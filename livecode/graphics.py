@@ -10,6 +10,7 @@ from glumpy import gloo, gl, library
 from glumpy.graphics.collections import PathCollection
 
 from . utils import *
+from . pattern import Var
 
 class GLSLSourceCode(SourceCode):
     collapse_regex = re.compile(
@@ -87,7 +88,7 @@ class LiveProgram(object):
     #     self.program.__setattr__(*args)
 
 
-class Layer(object):
+class Layer(Var):
     """A 2D drawing layer.
 
     attrs:
@@ -136,8 +137,8 @@ class Layer(object):
         """Render to self.target. Keyword args bound to shader."""
         with self.target:
             for k,v in kwargs.items():
-                if isinstance(v, Layer):
-                    v = v.state[0]
+                # if isinstance(v, Layer):
+                    # v = v.state[0]
                 self.program[k] = v
             for i, state in enumerate(self.target.history):
                 for j, buf in enumerate(state):
@@ -150,9 +151,12 @@ class Layer(object):
             self.program.draw(self.draw_method)
         return self.state
 
-    def __call__(self, **call_kwargs):
+    def __call__(self, **draw_kwargs):
         """call `draw` with all stored arguments"""
-        self.draw(**{k:next(v) for k,v in self.draw_kwargs.items()}, **call_kwargs)
+        self.draw(
+            **{k:next(v) for k,v in self.draw_kwargs.items()},
+            **draw_kwargs
+            )
         return self
 
     def resize(self, size):
@@ -166,9 +170,14 @@ class Layer(object):
         else:
             # store all uniforms in the Layer object as infinite iterators
             # (may store e.g. default values parsed from the source in the LiveProgram still)
-            if not isinstance(v, it.cycle):
-                v = it.cycle((v,))
+            # if not isinstance(v, it.cycle):
+                # v = it.cycle((v,))
+            if not isinstance(v, Var):
+                v = Var(v)
             self.draw_kwargs[k] = v
+
+    def __next__(self):
+        return self.state[0]
 
     @property
     def state(self):

@@ -20,6 +20,6 @@ void main(){
   vec2 px = gl_FragCoord.xy;
   vec4 s = samp(color, px);
   // vec4 c = s+mix(samp(history_t0_b0, px), blur4pt(history_t0_b0, px), 0.8)*0.97;
-  vec4 c = max(s, mblur5pt(history_t0_b0, px)*0.97);
+  vec4 c = max(s, mblur5pt(history_t0_b0, px)*decay);
   fragColor = c;
 }

@@ -13,27 +13,28 @@ try:
 except ImportError:
     logging.warning('audio unavailable; install pyaudio')
 
-from . pattern import *
 from . utils import *
+from . pattern import *
+from . midi import *
 from . graphics import *
 from . vwt import *
 
 # critical bugs/performance issues:
 #TODO: fix hidpi + regular display
-#TODO: optimize VideoWaveTerrainJIT / debug popping
-#TODO: look into gaps in vwt paths
+#TODO: optimize VideoWaveTerrainJIT
 
 # code improvements:
 #TODO: parse shaders to set default uniform values (uniform * = ();)
 #TODO: allow Points to append any number of points at a time (could draw N at a time)
 #TODO: lazy cycling (don't compute unused buffers each frame)
 #TODO: "needs_draw" flag on Layers / implicit draw order
-#TODO: livecodeable parts of VideoWaveTerrainJIT
 
 # new features:
 #TODO: snapshot, push/pop behavior for buffers, programs, layers?
 #TODO: capsule shader (points+velocity)
 #TODO: distinguish path color from draw color in VideoWaveTerrain(JIT)
+#TODO: livecodeable parts of VideoWaveTerrainJIT?
+
 
 # sugar for setting log level
 class _log(type):

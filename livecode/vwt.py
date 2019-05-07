@@ -58,14 +58,13 @@ def norm2(v):
     ('c', numba.float32[:,:]),
     ('momentum', numba.float32[:,:]),
     ('pixel_size', numba.float32[:]),
-    ('mdecay', numba.float32),
-    ('stepsize', numba.float32),
     ('t', numba.int64),
-    # ('sr', numba.int64),
     ('t_cur_added', numba.int64),
     ('t_last_added', numba.int64),
     ('t_next_added', numba.int64),
     ('t_switched', numba.int64),
+    ('mdecay', numba.float32),
+    ('stepsize', numba.float32),
     ('n', numba.int64)
 ])
 class VideoWaveTerrainJIT(object):
@@ -78,17 +77,16 @@ class VideoWaveTerrainJIT(object):
         self.c = np.zeros((n, 4), dtype=np.float32)
         self.momentum = np.zeros((n, 2), dtype=np.float32)
         self.pixel_size = np.ones(2, dtype=np.float32)
-        # parameters:
-        self.mdecay = 0.99
-        self.stepsize = 0.03
         self.t = 0
-        # self.sr = 24000
         self.t_next_added = -1
         self.t_cur_added = -2
         self.t_last_added = -3
         self.t_switched = 0
+        # mutable parameters:
+        self.mdecay = 0.95
+        self.stepsize = 0.5
+        # immutable parameters:
         self.n = n
-
 
     def feed(self, frame):
         # stage a new frame; if it isn't consumed by `switch` before `feed` is
@@ -188,7 +186,7 @@ class VideoWaveTerrain(object):
 
     def draw(self):
         self.points.draw()
-        self.filtered.draw(color=self.points.target.state[0])
+        self.filtered(color=self.points.target.state[0])
 
     def __getattr__(self, k):
         return getattr(self.vwt, k)
