@@ -1,8 +1,8 @@
 import numpy as np
 from glumpy import app
-from livecode import Layer, make_window, start_shell
+from livecode import *
 
-size = 620, 660
+size = 2700, 900
 # size = 1366, 720
 
 size = np.array(size)
@@ -14,10 +14,19 @@ screen = Layer(size, get_shaders('display'))
 feedback = Layer(size, get_shaders('feedback2'), n=3)
 filtered = Layer(size, get_shaders('filter'), n=2)
 
+filtered.color = feedback
+feedback.filtered = filtered
+screen.color = feedback
+
+feedback.drag = 0.97
+
+capture = Capture()
+
 def image():
-    filtered(color=feedback)
-    feedback(filtered=filtered)
-    screen(color=feedback)
+    filtered()
+    feedback()
+    screen()
+    capture.do()
 
 window = make_window(image, size, title='scratch')
 @window.event

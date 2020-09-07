@@ -16,9 +16,9 @@ void main() {
   float m = 8.*max(0.,a);
 
   fragColor = vec4(
-    // c.bbb*(0.1+1.2*c.aaa)+0.05*cos(2.*pi*vec3((2.*c.r-c.g)/3.,(c.r-c.g)/2.,(2.*c.g-c.r)/3.)-pi),
+    c.bbb*(0.1+1.2*c.aaa)+0.05*cos(2.*pi*vec3((2.*c.r-c.g)/3.,(c.r-c.g)/2.,(2.*c.g-c.r)/3.)-pi),
     // c.rgb,
     // mix(c.gbr, c.rgb, sqrt(m/(m+1.))),
-    c.rgb*vec3(1., 0.33, 0.5) + c.rgb*sqrt(m/(m+1.))*vec3(0.33, 0.5, 0.5),
+    // c.rgb*vec3(1., 0.33, 0.5) + c.rgb*sqrt(m/(m+1.))*vec3(0.33, 0.5, 0.5),
     1.);
 }
