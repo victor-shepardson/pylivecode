@@ -66,6 +66,7 @@ class SourceCode(object):
         return True
 
 # recording tools
+# TODO: combine imsave_mp with Capture
 
 def init_imsave_mp(n_procs=6, max_tasks=12):
     global imsave_pool, max_imsave_tasks
@@ -82,3 +83,17 @@ def imsave_mp(path, arr, compress_level=5):
     # block until there are fewer than max_imsave_tasks
     while len(imsave_tasks) > max_imsave_tasks:
         imsave_tasks = [t for t in imsave_tasks if not t.ready()]
+
+class Capture(object):
+    """single frame capture. use capture.do() in the draw loop,
+    capture.__call__(layer) in the REPL.
+    """
+    def __init__(self):
+        self.needs_capture = False
+    def __call__(self, layer):
+        self.needs_capture = True
+        self.layer = layer
+    def do(self):
+        if self.needs_capture:
+            imwrite(f'capture/{dt.datetime.now()}.png', self.layer.cpu)
+            self.needs_capture = False

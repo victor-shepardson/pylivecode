@@ -23,7 +23,7 @@ V = Vars()
 V.gain = 0
 
 def get_shaders(s):
-    return ('shader/lib.glsl', 'shader/'+s+'.glsl')
+    return ('shader/zebra/lib.glsl', 'shader/zebra/'+s+'.glsl')
 
 # initialization
 
@@ -33,7 +33,8 @@ feedback = Layer(size, get_shaders('feedback-aux'), n=2)
 filtered = Layer(size, get_shaders('filter'), n=2)
 readback = Layer(size//8, get_shaders('readback'), n=1, autoread=True)
 
-vwt = VideoWaveTerrain(size, frame_count, n_agents, point_shader=get_shaders('filter-accum'))
+vwt = VideoWaveTerrain(
+    size, frame_count, n_agents, point_shader=get_shaders('filter-accum'))
 vwt.filtered.decay = 0.9
 
 # patching
@@ -68,9 +69,8 @@ def sound():
     data = next(V.gain)*vwt.sound()
     return data
 
-
 # start app
-window = make_window(image, size, title='vwt')
+window = make_window(image, size, title='zebra')
 @window.event
 def on_resize(w,h):
     screen.resize((w,h))
