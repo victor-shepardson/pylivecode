@@ -1,4 +1,4 @@
-import sys, logging, threading
+import sys, logging, threading, time
 
 from glumpy import app
 
@@ -22,9 +22,10 @@ from . vwt import *
 # critical bugs/performance issues:
 #TODO: fix hidpi + regular display
 #TODO: optimize VideoWaveTerrainJIT
+#TODO: thread safety? for MIDI etc?
 
 # code improvements:
-#TODO: parse shaders to set default uniform values (uniform * = ();)
+#TODO: parse shaders to set default uniform values (uniform <name> = <val>;)
 #TODO: allow Points to append any number of points at a time (could draw N at a time)
 #TODO: lazy cycling (don't compute unused buffers each frame)
 #TODO: "needs_draw" flag on Layers / implicit draw order
@@ -39,7 +40,7 @@ from . vwt import *
 # sugar for setting log level
 class _log(type):
     def __getattr__(cls, level):
-        logging.getLogger().setLevel(getattr(logging, level))
+        logging.getLogger().setLevel(getattr(logging, level.upper()))
 class log(metaclass=_log):
     pass
 
@@ -75,11 +76,16 @@ def make_window(image_fn, size, title=None, cleanup=True):
 
 # setup pyaudio stream
 streams = []
+stream_time = 0
 def make_stream(sound_fn, frame_count, channels=2, sample_rate=48000):
-    global audio, streams
 
     def stream_callback(in_data, fc, time_info, status):
+        global stream_time
+        begin = time.perf_counter()
+        logging.debug('time between stream callbacks: '+str(begin-stream_time))
         data = sound_fn()
+        logging.debug('time to process audio: '+str(time.perf_counter()-begin))
+        stream_time = begin
         return (data, pa.paContinue)
 
     stream = audio.open(
@@ -98,7 +104,6 @@ def make_stream(sound_fn, frame_count, channels=2, sample_rate=48000):
 shells = []
 def start_shell(ns):
     """start an IPython shell in a new thread with the given namespace"""
-    global shells
     shell = IPython.terminal.embed.InteractiveShellEmbed()
     threading.Thread(target=shell.mainloop, kwargs={'local_ns': ns}).start()
     shells.append(shell)

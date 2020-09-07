@@ -1,16 +1,20 @@
 import sys, logging
+import datetime as dt
+import imageio
 import numpy as np
 from glumpy import app, gl
 
 from livecode import *
 
-# size = 900, 900
-size = 1920, 1920
+size = 900, 900
+# size = 1920, 1920
+# size = 1920*2, 1920*2
+
 size = np.array(size)
 
 frame_count = 512
-sample_rate = 24000
-n_agents = 3
+sample_rate = 6000
+n_agents = 8
 
 # global primitives need to be wrapped in a Var even if they aren't patched,
 # since shell runs in its own thread -- locals() will copy primitives
@@ -23,7 +27,8 @@ def get_shaders(s):
 
 # initialization
 
-screen = Layer(size, get_shaders('display'))
+post = Layer(size, get_shaders('display'), short=True, n=1)
+screen = Layer(size, get_shaders('display-stretch'))
 feedback = Layer(size, get_shaders('feedback-aux'), n=2)
 filtered = Layer(size, get_shaders('filter'), n=2)
 readback = Layer(size//8, get_shaders('readback'), n=1, autoread=True)
@@ -35,10 +40,28 @@ vwt.filtered.decay = 0.9
 filtered.color = feedback
 feedback.filtered = filtered
 feedback.aux = vwt.filtered
-feedback.drag = 0.9
 readback.color = feedback
-screen.color = feedback
+post.color = feedback
+screen.color = post
 # screen.color = cycle((feedback, vwt.filtered), 3)
+
+feedback.drag = (M.cc1/127)**0.25
+vwt.mdecay = (M.cc2/127)**0.25
+
+M.cc1 = 100
+M.cc2 = 120
+
+class Capture(object):
+    def __init__(self):
+        self.needs_capture = False
+    def __call__(self, layer):
+        self.needs_capture = True
+        self.layer = layer
+    def do(self):
+        if self.needs_capture:
+            imageio.imwrite(f'capture/{dt.datetime.now()}.png', self.layer.cpu)
+            self.needs_capture = False
+capture = Capture()
 
 # draw order
 def image():
@@ -46,7 +69,9 @@ def image():
     vwt.draw()
     feedback()
     vwt.feed(readback().cpu)
+    post()
     screen()
+    capture.do()
 
 # sound generator
 def sound():

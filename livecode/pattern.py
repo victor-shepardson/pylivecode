@@ -2,7 +2,7 @@
 
 import itertools as it
 import functools as ft
-import operator
+import operator, threading
 from collections import defaultdict
 
 def cycle(iterable, period=1):
@@ -11,19 +11,23 @@ def cycle(iterable, period=1):
 class Var(object):
     """convert everything to iterables & wrap primitives.
     arithmetic operations will construct computational graphs of variables.
+    thread safe.
     """
     def __init__(self, v=0):
+        self._lock = threading.Lock()
         self.set(v)
     def __next__(self):
-        return next(self.v)
+        with self._lock:
+            return next(self.v)
     def set(self, v):
         """Set the value, converting it to an infinite iterator"""
-        if hasattr(v, '__next__'):
-            if hasattr(v, '__len__'):
-                v = it.cycle(v)
-        else:
-            v = it.cycle((v,))
-        self.v = v
+        with self._lock:
+            if hasattr(v, '__next__'):
+                if hasattr(v, '__len__'):
+                    v = it.cycle(v)
+            else:
+                v = it.cycle((v,))
+            self.v = v
 
 class Op(Var):
     def __init__(self, *args, fn=None):
@@ -54,7 +58,7 @@ for op_name in (
 
 
 class Vars(defaultdict):
-    """store Vars and provide syntactic sugar for setting/incrementing.
+    """defaultdict of Var providing attr access.
 
     L = Layer(...)
     V = Vars()

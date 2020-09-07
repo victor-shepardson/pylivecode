@@ -5,6 +5,7 @@ import itertools as it
 import datetime as dt
 from queue import Queue
 import numpy as np
+import torch
 
 from glumpy import gloo, gl, library
 from glumpy.graphics.collections import PathCollection
@@ -87,6 +88,32 @@ class LiveProgram(object):
     # def __setattr__(self, *args):
     #     self.program.__setattr__(*args)
 
+class CPULayer(Var):
+    def __init__(self, size, closure, **buffer_args):
+        w = 1
+        self.buffer = NBuffer(size, 1, w, **buffer_args)
+        self.closure = closure #if isinstance(closure, Var) else Var(closure)
+
+    def draw(self):
+        if self.closure is not None:
+            try:
+                self.closure(self.buffer.state[0])
+            except Exception as e:
+                logging.error(e)
+                self.closure = None
+        # next(self.closure)(self.buffer.state[0])
+
+    @property
+    def state(self):
+        return self.buffer.state
+
+    def __next__(self):
+        return self.state[0]
+
+    def __call__(self):
+        self.draw()
+        return self
+
 
 class Layer(Var):
     """A 2D drawing layer.
@@ -109,8 +136,8 @@ class Layer(Var):
     uniforms of the form "history_t{i}_b{j}" (if they exist). So ping-ponging feedback is set up without patching provided `self.n >=2`
 
     Attributes may be set to an infinite iterator, causing each call to `draw`
-    advance the iterator and use the returned value. A finite iterator will be
-    automatically converted via `itertools.cycle`.
+    to advance the iterator and use the returned value. A finite iterator will
+    be automatically converted via `itertools.cycle`.
     """
     def __init__(self, size, shader, n=0, **buffer_args):
         self.program = LiveProgram(vert="""
@@ -214,10 +241,13 @@ class NBuffer(object):
         An NBuffer has size[0]*size[1]*n*w*channels total pixels.
         """
         self.size = size
-        self.dtype = np.uint8 if short else np.float32
+        # self.dtype = np.uint8 if short else np.float32
+        self.dtype = torch.uint8 if short else torch.float32
         def gen_tex():
             ttype = gloo.Texture2D if short else gloo.TextureFloat2D
-            tex = np.zeros((*size[::-1], channels), self.dtype).view(ttype)
+            # tex = np.zeros((*size[::-1], channels), self.dtype).view(ttype)
+            tex = torch.zeros((*size[::-1], channels), dtype=self.dtype).numpy().view(ttype)
+
             tex.interpolation = interpolation
             tex.wrapping = wrapping
             return tex

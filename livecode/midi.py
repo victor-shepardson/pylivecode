@@ -2,7 +2,6 @@
 
 import logging
 
-
 from . pattern import Vars
 M = Vars()
 
