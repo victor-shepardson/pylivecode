@@ -13,8 +13,8 @@ size = 900, 900
 size = np.array(size)
 
 frame_count = 512
-sample_rate = 6000
-n_agents = 8
+sample_rate = 12000
+n_agents = 3
 
 # global primitives need to be wrapped in a Var even if they aren't patched,
 # since shell runs in its own thread -- locals() will copy primitives
@@ -33,7 +33,8 @@ feedback = Layer(size, get_shaders('feedback-aux'), n=2)
 filtered = Layer(size, get_shaders('filter'), n=2)
 readback = Layer(size//8, get_shaders('readback'), n=1, autoread=True)
 
-vwt = VideoWaveTerrain(size, frame_count, n_agents, point_shader=get_shaders('filter-accum'))
+vwt = VideoWaveTerrain(
+    size, frame_count, n_agents, point_shader=get_shaders('filter-accum'))
 vwt.filtered.decay = 0.9
 
 # patching
@@ -47,9 +48,10 @@ screen.color = post
 
 feedback.drag = (M.cc1/127)**0.25
 vwt.mdecay = (M.cc2/127)**0.25
+vwt.stepsize = 0.5
 
 M.cc1 = 100
-M.cc2 = 120
+M.cc2 = 0
 
 capture = Capture()
 

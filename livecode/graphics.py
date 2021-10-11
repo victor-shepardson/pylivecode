@@ -213,6 +213,9 @@ class Layer(Var):
     @property
     def cpu(self):
         return self.target.cpu
+    
+    def __repr__(self):
+        return str(self.program.program.all_uniforms)
 
 class NBuffer(object):
     def __init__(self, size, n, w=1,
