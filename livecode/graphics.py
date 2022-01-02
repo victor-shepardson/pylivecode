@@ -7,7 +7,7 @@ from queue import Queue
 import numpy as np
 import torch
 
-from glumpy import gloo, gl, library
+from glumpy import gloo, gl, library, transforms
 from glumpy.graphics.collections import PathCollection
 
 from . utils import *
@@ -21,11 +21,13 @@ class GLSLSourceCode(SourceCode):
     def update(self):
         # parse for uniforms and outs
         # replace content between curly braces with ; split on ;
-        lines = re.sub(GLSLSourceCode.collapse_regex, ';', self._code).split(';')
+        lines = re.sub(
+            GLSLSourceCode.collapse_regex, ';', self._code).split(';')
         lines = [l.strip() for l in lines]
         lines = [l for l in lines if l and not l.startswith('//')]
         def parse_decs(match):
-            return {tuple(l.split()[1:3]) for l in lines if l.startswith(match)}
+            return {
+                tuple(l.split()[1:3]) for l in lines if l.startswith(match)}
         self.ins = parse_decs('in')
         self.outs = parse_decs('out')
         self.uniforms = parse_decs('uniform')
@@ -35,24 +37,86 @@ class GLSLSourceCode(SourceCode):
         """assume source code of containing '{', else assume path"""
         return isinstance(sh, str) and '{' not in sh
 
+class Program(gloo.Program):
+    """
+    subclasses gloo.Program to allow a couroutine to be provided to draw,
+    for reducing overhead of multiple draw calls
+
+    NOTE: this needs to be updated manually with glumpy
+    """
+    def draw(self, mode=gl.GL_TRIANGLES, indices=None, coroutine=None): #first=0, count=None):
+        """ Draw using the specified mode & indices.
+        :param gl.GLEnum mode: 
+          One of
+            * GL_POINTS
+            * GL_LINES
+            * GL_LINE_STRIP
+            * GL_LINE_LOOP,
+            * GL_TRIANGLES
+            * GL_TRIANGLE_STRIP
+            * GL_TRIANGLE_FAN
+        :param IndexBuffer|None indices:
+            Vertex indices to be drawn. If none given, everything is drawn.
+        """
+
+        # if coroutine is None:
+            # coroutine = lambda: (None,)
+
+        self.activate()
+        attributes = self._attributes.values()
+
+        # Get buffer size first attribute
+        # We need more tests here
+        #  - do we have at least 1 attribute ?
+        #  - does all attributes report same count ?
+        # count = (count or attributes[0].size) - first
+
+        if isinstance(indices, gloo.IndexBuffer):
+            indices.activate()
+            gltypes = { np.dtype(np.uint8) : gl.GL_UNSIGNED_BYTE,
+                        np.dtype(np.uint16): gl.GL_UNSIGNED_SHORT,
+                        np.dtype(np.uint32): gl.GL_UNSIGNED_INT }
+            for _ in coroutine():
+                gl.glDrawElements(
+                    mode, indices.size, gltypes[indices.dtype], None)
+            indices.deactivate()
+        else:
+            first = 0
+            # count = (self._count or attributes[0].size) - first
+            count = len(tuple(attributes)[0])
+            if coroutine is not None:
+                for _ in coroutine():
+                    gl.glDrawArrays(mode, first, count)
+            else:
+                gl.glDrawArrays(mode, first, count)
+
+
+        gl.glBindBuffer( gl.GL_ARRAY_BUFFER, 0 )
+        self.deactivate()
+
 class LiveProgram(object):
     """encapsulates a gloo.Program and watches its source files for changes"""
     def __init__(self, vert=None, frag=None, **kw):
-        self.frag_sources = frag and [GLSLSourceCode(s) for s in as_iterable(frag)]
-        self.vert_sources = vert and [GLSLSourceCode(s) for s in as_iterable(vert)]
+        self.frag_sources = frag and [
+            GLSLSourceCode(s) for s in as_iterable(frag)]
+        self.vert_sources = vert and [
+            GLSLSourceCode(s) for s in as_iterable(vert)]
         self.program = None
         self.program_kw = kw
         self.reloaded = None
         self.reload()
 
     def reload(self):
-        logging.debug(f'reloading shader program last loaded at {self.reloaded}')
+        logging.debug(
+            f'reloading shader program last loaded at {self.reloaded}')
         self.reloaded = dt.datetime.now()
         frag = '\n'.join(s.code for s in self.frag_sources)
         vert = '\n'.join(s.code for s in self.vert_sources)
-        new_program = gloo.Program(vert, frag, **self.program_kw)
+        new_program = Program(vert, frag, **self.program_kw)
         if self.program is not None:
-            for k,v in it.chain(self.program.active_uniforms, self.program.active_attributes):
+            for k,v in it.chain(
+                    self.program.active_uniforms, 
+                    self.program.active_attributes):
                 logging.debug(f'transferring {k}')
                 new_program[k] = self.program[k]
         self.old_program = self.program
@@ -133,13 +197,18 @@ class Layer(Var):
     builds a feedback loop between `layer_a` and `layer_b`.
 
     Furthermore all buffers `self.target.history` are automatically bound to
-    uniforms of the form "history_t{i}_b{j}" (if they exist). So ping-ponging feedback is set up without patching provided `self.n >=2`
+    uniforms of the form "history_t{i}_b{j}" (if they exist). 
+    So ping-ponging feedback is set up without patching provided `self.n >=2`
 
     Attributes may be set to an infinite iterator, causing each call to `draw`
     to advance the iterator and use the returned value. A finite iterator will
     be automatically converted via `itertools.cycle`.
     """
-    def __init__(self, size, shader, n=0, **buffer_args):
+    def __init__(self, size, shader, n=0, scan=False, **buffer_args):
+        """
+        Args:
+            scan: if True, draw columns serially using a scissor
+        """
         self.program = LiveProgram(vert="""
             in vec2 position;
             out vec2 uv;
@@ -159,6 +228,7 @@ class Layer(Var):
         w = sum(len(s.outs) for s in self.program.frag_sources)
         self.target = NBuffer(size, n, w, **buffer_args)
         self.draw_kwargs = {}
+        self.scan = scan
 
     def draw(self, **kwargs):
         """Render to self.target. Keyword args bound to shader."""
@@ -175,7 +245,19 @@ class Layer(Var):
                     except IndexError as e:
                         pass
             gl.glDisable(gl.GL_BLEND)
-            self.program.draw(self.draw_method)
+            if self.scan:
+                w = self.target.size[0]
+                h = self.target.size[1]
+                def cr():                
+                    gl.glEnable(gl.GL_SCISSOR_TEST)
+                    for t in range(w):
+                        gl.glScissor(t,0,1,h)
+                        yield
+                        gl.glFlush()
+                    gl.glDisable(gl.GL_SCISSOR_TEST)
+                self.program.draw(self.draw_method, coroutine=cr)
+            else:
+                self.program.draw(self.draw_method)
         return self.state
 
     def __call__(self, **draw_kwargs):
@@ -192,11 +274,12 @@ class Layer(Var):
 
     def __setattr__(self, k, v):
         """sugar: most attributes fall through to shader program."""
-        if k in ['program', 'draw_method', 'target', 'draw_kwargs']:
+        if k in ['program', 'draw_method', 'target', 'draw_kwargs', 'scan']:
             super().__setattr__(k, v)
         else:
             # store all uniforms in the Layer object as infinite iterators
-            # (may store e.g. default values parsed from the source in the LiveProgram still)
+            # (may store e.g. default values parsed from the source 
+            #   in the LiveProgram still)
             # if not isinstance(v, it.cycle):
                 # v = it.cycle((v,))
             if not isinstance(v, Var):
@@ -220,7 +303,8 @@ class Layer(Var):
 class NBuffer(object):
     def __init__(self, size, n, w=1,
             autoread=False, short=False, channels=4,
-            wrapping=gl.GL_REPEAT, interpolation=gl.GL_LINEAR):
+            wrapping=gl.GL_REPEAT, interpolation=gl.GL_LINEAR,
+            ):
         """Circular collection of FrameBuffer
         size: 2d dimensions in pixels
         n: number of framebuffers (time dimension):
@@ -249,7 +333,8 @@ class NBuffer(object):
         def gen_tex():
             ttype = gloo.Texture2D if short else gloo.TextureFloat2D
             # tex = np.zeros((*size[::-1], channels), self.dtype).view(ttype)
-            tex = torch.zeros((*size[::-1], channels), dtype=self.dtype).numpy().view(ttype)
+            tex = torch.zeros(
+                (*size[::-1], channels), dtype=self.dtype).numpy().view(ttype)
 
             tex.interpolation = interpolation
             tex.wrapping = wrapping
@@ -289,24 +374,24 @@ class NBuffer(object):
         """return the ColorBuffers under `self.head`.
 
         within the NBuffer's context manager, this is the oldest set of buffers
-        (to be overwritten). outside the context manager, it is the most recently
-        written (to be read).
+        (to be overwritten). outside the context manager, it is the most 
+        recently written (to be read).
         """
         return self._state[self.head].color if self.n else None
 
     @property
     def history(self):
-        """return list of all ColorBuffers except at `self.head`, ordered from
-        newest to oldest.
+        """return list of all ColorBuffers ordered from newest to oldest.
         e.g.:
-            n = 2, inside context manager: history[0] is
+            n = 2, inside context manager: history[0] is the current buffer
         """
-        idxs = (self.head-1-np.arange(self.n-1))%self.n
+        # idxs = (self.head-1-np.arange(self.n-1))%self.n
+        idxs = (self.head-1-np.arange(self.n))%self.n
         return [self._state[i].color for i in idxs]
 
     def activate(self):
         """prepare to draw:
-        increment self.head, invalidate the cpu rep and activate the render target
+        increment self.head, invalidate the cpu rep and activate render target
         """
         gl.glViewport(0, 0, *self.size)
         if self.n:
@@ -331,6 +416,7 @@ class NBuffer(object):
         self.deactivate()
     def __len__(self):
         return self.n
+
 
 class Points(object):
     """adapted from glumpy example:
@@ -396,14 +482,17 @@ class Points(object):
         # consume all segments present at start of drawing
         with self.target:
             gl.glViewport(0, 0, *self.target.size)
+
+            gl.glClearColor(0,0,0,1)
             gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+
             n = self.segments.qsize()
             for _ in range(n):
                 p,c,s = self.segments.get()
                 self.data['a_position'][:] = p
                 self.data['a_color'][:] = c
-                self.data['a_size'][:] = s
-                # gl.glClearColor(0,0,0,0.001)
-                # gl.glEnable(gl.GL_BLEND)
-                # gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+                self.data['a_size'][:] = s                
                 self.program.draw(gl.GL_POINTS)
+
+    def __next__(self):
+        return self.target.state[0]

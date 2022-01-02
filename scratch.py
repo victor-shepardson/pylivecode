@@ -10,9 +10,11 @@ def get_shaders(s):
     return ('shader/lib.glsl', 'shader/'+s+'.glsl')
 
 screen = Layer(screen_size, get_shaders('display-stretch'))
+# post = Layer(
+    # screen_size, get_shaders('display_zoetrope'), n=1, short=True)
 post = Layer(
     screen_size, get_shaders('display_zoetrope'), n=1, short=True)
-feedback = Layer(size, get_shaders('feedback2'), n=3)
+feedback = Layer(size, get_shaders('feedback2'), n=3,)
 filtered = Layer(size, get_shaders('filter'), n=2)
 
 filtered.color = feedback
@@ -39,6 +41,8 @@ window = make_window(image, win_size, title='scratch')
 @window.event
 def on_resize(w,h):
     screen.resize((w,h))
+
+# window.attach(post.program['viewport'])
 
 shell = start_shell(locals())
 
