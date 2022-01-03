@@ -8,12 +8,15 @@ out vec4 fragColor;
 
 vec4 mblur5pt(sampler2D t, vec2 px){
   const vec3 d = vec3(1.,-1.,0.);
-  return max(0.99*max(max(max(
-    samp(t, px+d.xz),
-    samp(t, px+d.yz)),
-    samp(t, px+d.zx)),
-    samp(t, px+d.zy)),
-    samp(t, px));
+  vec4 e = samp(t, px+d.xz);
+  vec4 w = samp(t, px+d.yz);
+  vec4 n = samp(t, px+d.zx);
+  vec4 s = samp(t, px+d.zy);
+  vec4 c = samp(t, px);
+  // return max(c, 
+  //   0.49*max(max(max(e, w), n), s) + 0.125*(e+w+n+s));
+  return max(c, 
+    0.2*(e+w+n+s+c));
 }
 
 void main(){

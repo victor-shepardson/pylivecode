@@ -483,7 +483,7 @@ class Points(object):
         with self.target:
             gl.glViewport(0, 0, *self.target.size)
 
-            gl.glClearColor(0,0,0,1)
+            gl.glClearColor(0,0,0,0)
             gl.glClear(gl.GL_COLOR_BUFFER_BIT)
 
             n = self.segments.qsize()

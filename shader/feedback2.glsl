@@ -90,7 +90,7 @@ void main() {
   change /= length(change)+eps;
   vec4 sharp = samp(history_t0_b0, px)-w1;
   sharp /= length(sharp)+eps;
-  c2 += 0.1*(sat*0.2 + change*0.2 + sharp*0.6);
+  c2 += 0.2*(sat*0.2 + change*0.2 + sharp*0.6);
   // c2 += sat*(0.5-w.a)*0.1 + change*0.05;
 
   // c2 = c_sv + c2;
