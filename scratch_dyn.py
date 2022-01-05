@@ -18,7 +18,7 @@ feedback = Layer(size, get_shaders('feedback-trails'), n=3)
 filtered = Layer(size, get_shaders('filter'), n=2)
 paths = Layer(paths_size, get_shaders('paths'), 
     n=1, scan=True, interpolation=gl.GL_NEAREST)
-points = Points(size, paths_size[0]*paths_size[1])
+points = Points(size*2, paths_size[0]*paths_size[1])
 # trails = Layer(size, get_shaders('filter-accum'), n=2)
 
 
@@ -34,7 +34,7 @@ screen.color = feedback
 # screen.trails = trails
 # screen.terrain = feedback
 
-feedback.drag = 0.99
+feedback.drag = 0.95
 # trails.decay = 0.8
 
 capture = Capture()
@@ -51,7 +51,7 @@ def image():
     # cs = np.linspace(0, 1, positions.shape[0])
     # colors = np.stack((cs, 1-cs, np.ones(cs.shape), np.ones(cs.shape)), -1)
     colors = np.ones((positions.shape[0], 4))
-    sizes = np.ones((positions.shape[0])) * 2
+    sizes = np.ones((positions.shape[0])) * 3
     points.append((positions, colors, sizes))
     points.draw()
     # trails()

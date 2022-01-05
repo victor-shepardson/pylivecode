@@ -41,7 +41,7 @@ void main() {
   vec4 w = w0;
   vec4 c_acc = vec4(0.);
   vec2 delta = vec2(0.);
-  const int n = 4;
+  const int n = 2;
   float nf = 0.;
   for(int i=0; i<n; i++){
     nf+=1.;
@@ -133,6 +133,7 @@ void main() {
 //   fragColor = c;//mix(c, c0, drag);
     // fragColor = max(a0,  c-0.001);
     // fragColor = c + a0 - 0.001;
-    fragColor = mix(c, 1-c.argb, a0);
+    fragColor = mix(c, fract(0.01+c.argb), a0);
+    // fragColor = fract(c + 5*a0/77);
 
 }
