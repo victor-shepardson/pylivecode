@@ -38,7 +38,7 @@ void main() {
   vec2 new_mom = 0.5 * mom + c2 + repulse;
 
 //   vec2 new_pos = pos + normalize(new_mom*size)/size/2 + 2 ;
-  vec2 new_pos = pos + new_mom/3 + 2 ;//+ sin(
+  vec2 new_pos = pos + new_mom/5 + 2 ;//+ sin(
 
 
   new_pos -= floor(new_pos);

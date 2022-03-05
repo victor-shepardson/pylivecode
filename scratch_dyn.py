@@ -4,7 +4,7 @@ from livecode import *
 
 size = np.array((1600, 900))
 screen_size = np.array((1600, 900))
-paths_size = np.array((256, 512)) # serial, parallel
+paths_size = np.array((128, 512)) # serial, parallel
 win_size = screen_size*2
 
 def get_shaders(s):
@@ -40,6 +40,8 @@ feedback.drag = 0.95
 capture = Capture()
 
 frame = 0
+colors = np.ones((paths_size[0]*paths_size[1], 4))
+sizes = np.ones((paths_size[0]*paths_size[1])) * 3
 def image():
     global frame
     filtered()
@@ -47,11 +49,13 @@ def image():
     paths.frame = frame
     paths()
 
-    positions = paths.cpu[...,:2].reshape(-1, 2)*2-1
+    positions = paths.cpu[...,:2].reshape(-1, 2)
+    positions*=2 # copy operations are expensive here!
+    positions-=1
     # cs = np.linspace(0, 1, positions.shape[0])
     # colors = np.stack((cs, 1-cs, np.ones(cs.shape), np.ones(cs.shape)), -1)
-    colors = np.ones((positions.shape[0], 4))
-    sizes = np.ones((positions.shape[0])) * 3
+    # colors = np.ones((positions.shape[0], 4))
+    # sizes = np.ones((positions.shape[0])) * 3
     points.append((positions, colors, sizes))
     points.draw()
     # trails()
