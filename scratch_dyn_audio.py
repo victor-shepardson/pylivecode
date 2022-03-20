@@ -5,9 +5,9 @@ from livecode import *
 
 import numba
 
-size = np.array((1600, 900))
-screen_size = np.array((1600, 900))
-paths_size = np.array((128, 128)) # serial, parallel
+size = np.array((900, 900))
+screen_size = np.array((900, 900))
+paths_size = np.array((256, 32)) # serial, parallel
 win_size = screen_size*2
 
 sample_rate = 48000
@@ -24,8 +24,8 @@ screen = Layer(screen_size, get_shaders('display-stretch'))
 
 feedback = Layer(size, get_shaders('feedback-trails'), n=3)
 filtered = Layer(size, get_shaders('filter'), n=2)
-paths = Layer(paths_size, get_shaders('paths'), 
-    n=1, scan=True, interpolation=gl.GL_NEAREST)
+paths = Layer(paths_size, get_shaders('paths_color'), 
+    n=1, scan=True, interpolation=gl.GL_NEAREST, channels=2)
 points = Points(size*2, paths_size[0]*paths_size[1])
 # trails = Layer(size, get_shaders('filter-accum'), n=2)
 
@@ -42,7 +42,7 @@ screen.color = feedback
 # screen.trails = trails
 # screen.terrain = feedback
 
-feedback.drag = 0.97
+feedback.drag = 0.5
 # trails.decay = 0.8
 
 capture = Capture()
@@ -57,13 +57,15 @@ def image():
     paths.frame = frame
     paths()
 
-    positions = paths.cpu[...,:2].reshape(-1, 2)
+    # positions = paths.cpu[...,:2].reshape(-1, 2)
+    positions = paths.target.read(0).reshape(-1, 2)
     positions*=2
     positions-=1
     points.append((positions, colors, sizes))
     points.draw()
 
-    voices = paths.cpu[...,:2].transpose(1,0,2)
+    # voices = paths.cpu[...,:2].transpose(1,0,2)
+    voices = paths.target.read(2).transpose(1,0,2)
     Q.put(np.power(voices, 4.) * np.pi / 8)
 
     screen()
@@ -116,7 +118,7 @@ def sound_block(
     for i in range(frame_count):
         path_idx = min(int(
             (block_counter * frame_count + i) 
-            / (path_every * paths_size[0]) 
+            / (path_every * frame_count) 
             * paths_size[0]), paths_size[0]-1)
         phase += path_block[path_idx]
         buf[i,:] = np.mean(np.sin(phase))
@@ -133,6 +135,6 @@ stream = make_stream(
     sound, frame_count, channels=2, sample_rate=sample_rate)
 stream.start_stream()
 
-# shell = start_shell(locals())
+shell = start_shell(locals())
 
 app.run()
